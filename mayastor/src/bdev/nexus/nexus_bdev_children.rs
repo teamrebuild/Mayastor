@@ -137,7 +137,8 @@ impl Nexus {
 
                 // mark faulted so that it can never take part in the IO path of
                 // the nexus until brought online.
-                child.state = ChildState::Open;
+                child.state = ChildState::Faulted;
+
                 // how to "tag" a child as out of sync?
                 child.repairing = true;
                 self.children.push(child);
