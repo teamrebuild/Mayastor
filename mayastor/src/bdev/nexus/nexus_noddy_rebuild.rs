@@ -41,12 +41,12 @@ impl Nexus {
         let block_count = self.bdev.num_blocks();
         let block_size = self.bdev.block_len();
 
-        debug!("blocks: {}, blockSize: {}", block_count, block_size);
+        info!("Rebuilding child {} from {}, blocks: {}, blockSize: {}", bad_child.name, good_child.name, block_count, block_size);
 
         let mut buf = match bdev_handle.dma_malloc(block_size as usize) {
             Ok(buf) => buf,
             Err(_) => return self.set_state(state),
-        };       
+        };
 
         for blk in 0..block_count {
 

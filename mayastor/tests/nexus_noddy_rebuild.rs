@@ -1,4 +1,5 @@
 use crossbeam::channel::unbounded;
+pub mod common;
 
 use mayastor::{
     bdev::{nexus_create, nexus_lookup},
@@ -8,7 +9,6 @@ use mayastor::{
         MayastorEnvironment,
         Reactor,
     },
-    
 };
 
 static DISKNAME1: &str = "/tmp/disk1.img";
@@ -19,7 +19,6 @@ static BDEVNAME2: &str = "aio:///tmp/disk2.img?blk_size=512";
 
 static NEXUS_NAME: &str = "rebuild_test";
 static NEXUS_SIZE: u64 = 10 * 1024 * 1024;
-pub mod common;
 
 #[test]
 fn rebuild_test() {
@@ -33,7 +32,6 @@ fn rebuild_test() {
 
     common::delete_file(&[DISKNAME1.into(), DISKNAME2.into()]);
 }
-use std;
 
 async fn rebuild_test_start() {
     create_nexus().await;
@@ -48,33 +46,23 @@ async fn rebuild_test_start() {
         reactor_poll!(r);
     }
 
-    {
-        let device = device.clone();
-        let (s, r) = unbounded::<String>();
-        std::thread::spawn(move || s.send(compare_nexus_child(&device, DISKNAME1, true)));
-        reactor_poll!(r);
-    }
+    let (s, r) = unbounded::<String>();
+    std::thread::spawn(move || s.send(compare_nexus_child(&device, DISKNAME1)));
+    reactor_poll!(r);
 
-    {
-        let device = device.clone();
-        let (s, r) = unbounded::<String>();
-        std::thread::spawn(move || s.send(compare_nexus_child(&device, DISKNAME2, false)));
-        reactor_poll!(r);
-    }
+    let (s, r) = unbounded::<String>();
+    std::thread::spawn(move || s.send(compare_devices(DISKNAME1, DISKNAME2, false)));
+    reactor_poll!(r);
 
-    // // add the second child -> atm it's where we rebuild as well
+    // add the second child -> atm it's where we rebuild as well
     nexus.add_child(BDEVNAME2).await.unwrap();
 
-    {
-        let device = device.clone();
-        let (s, r) = unbounded::<String>();
-        std::thread::spawn(move || s.send(compare_nexus_child(&device, DISKNAME2, true)));
-        reactor_poll!(r);
-    }
+    let (s, r) = unbounded::<String>();
+    std::thread::spawn(move || s.send(compare_devices(DISKNAME1, DISKNAME2, true)));
+    reactor_poll!(r);
 
     mayastor_env_stop(0);
 }
-
 
 async fn create_nexus() {
     let ch = vec![BDEVNAME1.to_string()];
@@ -83,11 +71,10 @@ async fn create_nexus() {
         .unwrap();
 }
 
-// TODO: silence the dd error when it reaches the eof
 pub fn dd_urandom(device: &str) -> String {
     let (_, stdout, _stderr) = run_script::run(
         r#"
-        dd if=/dev/urandom of=$1
+        dd if=/dev/urandom of=$1 conv=fsync,nocreat,notrunc flag=count_bytes count=`blockdev --getsize64 $1`
     "#,
     &vec![device.into()],
     &run_script::ScriptOptions::new(),
@@ -96,13 +83,26 @@ pub fn dd_urandom(device: &str) -> String {
     stdout
 }
 
-pub fn compare_nexus_child(nexus_device: &str, child_device: &str, expected_pass: bool) -> String {
+pub fn compare_nexus_child(nexus_device: &str, child_device: &str) -> String {
     let (exit, stdout, _stderr) = run_script::run(
         r#"
-        cmp -n `blockdev --getsize64 $1` $1 $2 0 5M    
+        cmp -n `blockdev --getsize64 $1` $1 $2 0 5M
+    "#,
+    &vec![nexus_device.into(), child_device.into()],
+    &run_script::ScriptOptions::new(),
+    )
+    .unwrap();
+    assert_eq!(exit, 0);
+    stdout
+}
+
+pub fn compare_devices(first_device: &str, second_device: &str, expected_pass: bool) -> String {
+    let (exit, stdout, _stderr) = run_script::run(
+        r#"
+        cmp -b $1 $2 5M 5M
         test $? -eq $3
     "#,
-    &vec![nexus_device.into(), child_device.into(), (!expected_pass as i32).to_string()],
+    &vec![first_device.into(), second_device.into(), (!expected_pass as i32).to_string()],
     &run_script::ScriptOptions::new(),
     )
     .unwrap();
