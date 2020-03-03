@@ -15,19 +15,13 @@ use serde::Serialize;
 use snafu::{ResultExt, Snafu};
 
 use spdk_sys::{
-    spdk_bdev,
-    spdk_bdev_desc,
-    spdk_bdev_io,
-    spdk_bdev_io_get_buf,
-    spdk_bdev_readv_blocks,
-    spdk_bdev_register,
-    spdk_bdev_unmap_blocks,
-    spdk_bdev_unregister,
-    spdk_bdev_writev_blocks,
-    spdk_io_channel,
-    spdk_io_device_register,
-    spdk_io_device_unregister,
+    spdk_bdev, spdk_bdev_desc, spdk_bdev_io, spdk_bdev_io_get_buf,
+    spdk_bdev_readv_blocks, spdk_bdev_register, spdk_bdev_unmap_blocks,
+    spdk_bdev_unregister, spdk_bdev_writev_blocks, spdk_io_channel,
+    spdk_io_device_register, spdk_io_device_unregister,
 };
+
+use rpc::mayastor::{RebuildProgressReply, RebuildStateReply};
 
 use crate::{
     bdev::{
@@ -124,39 +118,17 @@ pub enum Error {
 impl RpcErrorCode for Error {
     fn rpc_error_code(&self) -> Code {
         match self {
-            Error::NexusNotFound {
-                ..
-            } => Code::NotFound,
-            Error::InvalidUuid {
-                ..
-            } => Code::InvalidParams,
-            Error::InvalidKey {
-                ..
-            } => Code::InvalidParams,
-            Error::AlreadyShared {
-                ..
-            } => Code::InvalidParams,
-            Error::NotShared {
-                ..
-            } => Code::InvalidParams,
-            Error::CreateChild {
-                ..
-            } => Code::InvalidParams,
-            Error::MixedBlockSizes {
-                ..
-            } => Code::InvalidParams,
-            Error::ChildGeometry {
-                ..
-            } => Code::InvalidParams,
-            Error::OpenChild {
-                ..
-            } => Code::InvalidParams,
-            Error::DestroyLastChild {
-                ..
-            } => Code::InvalidParams,
-            Error::ChildNotFound {
-                ..
-            } => Code::NotFound,
+            Error::NexusNotFound { .. } => Code::NotFound,
+            Error::InvalidUuid { .. } => Code::InvalidParams,
+            Error::InvalidKey { .. } => Code::InvalidParams,
+            Error::AlreadyShared { .. } => Code::InvalidParams,
+            Error::NotShared { .. } => Code::InvalidParams,
+            Error::CreateChild { .. } => Code::InvalidParams,
+            Error::MixedBlockSizes { .. } => Code::InvalidParams,
+            Error::ChildGeometry { .. } => Code::InvalidParams,
+            Error::OpenChild { .. } => Code::InvalidParams,
+            Error::DestroyLastChild { .. } => Code::InvalidParams,
+            Error::ChildNotFound { .. } => Code::NotFound,
             _ => Code::InternalError,
         }
     }
@@ -694,6 +666,22 @@ impl Nexus {
     /// returns the current status of the nexus
     pub fn status(&self) -> NexusState {
         self.state
+    }
+
+    pub async fn get_rebuild_state(&self) -> Result<RebuildStateReply, Error> {
+        // TODO: add real implementation
+        Ok(RebuildStateReply {
+            state: "Not implemented".to_string(),
+        })
+    }
+
+    pub async fn get_rebuild_progress(
+        &self,
+    ) -> Result<RebuildProgressReply, Error> {
+        // TODO: add real implementation
+        Ok(RebuildProgressReply {
+            progress: "Not implemented".to_string(),
+        })
     }
 }
 
