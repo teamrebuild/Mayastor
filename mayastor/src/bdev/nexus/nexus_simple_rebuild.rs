@@ -1,7 +1,7 @@
 //!
 //! This file implements operations for the rebuild process
 //!
-//! `noddy_rebuild` does a noddy rebuild
+//! `simple_rebuild` does a very simple sequencial rebuild
 //! 
 
 use crate::{
@@ -19,7 +19,7 @@ use std::cmp;
 
 impl Nexus {
     // rebuilds only the first bad child it finds
-    pub(crate) async fn noddy_rebuild(&mut self) -> NexusState {
+    pub(crate) async fn simple_rebuild(&mut self) -> NexusState {
         // if failed go back to the previous state
         let state = self.state;
 
@@ -45,7 +45,7 @@ impl Nexus {
         let max_blocks = max_rebuild_size / block_size;
 
         // At the moment if we copy the whole bdev it causes the js tests to timeout
-        // One option is to invoke the rebuild through a different command (ai - not on the add_child)
+        // One option is to invoke the rebuild through a different command (not on the add_child)
         // TODO: fix this
         let block_count = cmp::min(self.bdev.num_blocks(), max_blocks);
 

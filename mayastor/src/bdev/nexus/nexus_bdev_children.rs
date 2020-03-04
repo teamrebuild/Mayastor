@@ -148,7 +148,7 @@ impl Nexus {
                 // what to do if this fails?
                 let _ = self.sync_labels().await;
 
-                Ok(self.noddy_rebuild().await)
+                Ok(self.simple_rebuild().await)
             }
             Err(e) => {
                 if let Err(err) = bdev_destroy(uri).await {
