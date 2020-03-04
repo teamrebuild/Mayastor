@@ -1,7 +1,7 @@
 //!
 //! This file implements operations for the rebuild process
 //!
-//! `simple_rebuild` does a very simple sequencial rebuild
+//! `simple_rebuild` does a very simple sequential rebuild
 //! 
 
 use crate::{
