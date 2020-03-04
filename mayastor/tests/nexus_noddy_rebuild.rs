@@ -18,7 +18,7 @@ static DISKNAME2: &str = "/tmp/disk2.img";
 static BDEVNAME2: &str = "aio:///tmp/disk2.img?blk_size=512";
 
 static NEXUS_NAME: &str = "rebuild_test";
-static NEXUS_SIZE: u64 = 10 * 1024 * 1024;
+static NEXUS_SIZE: u64 = 10 * 1024 * 1024;  // 10MiB
 
 #[test]
 fn rebuild_test() {
@@ -39,19 +39,19 @@ async fn rebuild_test_start() {
     let nexus = nexus_lookup(NEXUS_NAME).unwrap();
     let device = nexus.share(None).await.unwrap();
 
-    {
-        let device = device.clone();
-        let (s, r) = unbounded::<String>();
-        std::thread::spawn(move || s.send(dd_urandom(&device)));
-        reactor_poll!(r);
-    }
-
+    let nexus_device = device.clone();
     let (s, r) = unbounded::<String>();
-    std::thread::spawn(move || s.send(compare_nexus_child(&device, DISKNAME1)));
+    std::thread::spawn(move || s.send(dd_urandom(&nexus_device)));
     reactor_poll!(r);
 
+    let nexus_device = device.clone();
     let (s, r) = unbounded::<String>();
-    std::thread::spawn(move || s.send(compare_devices(DISKNAME1, DISKNAME2, false)));
+    std::thread::spawn(move || s.send(compare_nexus_device(&nexus_device, DISKNAME1, true)));
+    reactor_poll!(r);
+    
+    let nexus_device = device.clone();
+    let (s, r) = unbounded::<String>();
+    std::thread::spawn(move || s.send(compare_nexus_device(&nexus_device, DISKNAME2, false)));
     reactor_poll!(r);
 
     // add the second child -> atm it's where we rebuild as well
@@ -74,7 +74,7 @@ async fn create_nexus() {
 pub fn dd_urandom(device: &str) -> String {
     let (_, stdout, _stderr) = run_script::run(
         r#"
-        dd if=/dev/urandom of=$1 conv=fsync,nocreat,notrunc flag=count_bytes count=`blockdev --getsize64 $1`
+        dd if=/dev/urandom of=$1 conv=fsync,nocreat,notrunc iflag=count_bytes count=`blockdev --getsize64 $1`
     "#,
     &vec![device.into()],
     &run_script::ScriptOptions::new(),
@@ -83,12 +83,13 @@ pub fn dd_urandom(device: &str) -> String {
     stdout
 }
 
-pub fn compare_nexus_child(nexus_device: &str, child_device: &str) -> String {
+pub fn compare_nexus_device(nexus_device: &str, device: &str, expected_pass: bool) -> String {
     let (exit, stdout, _stderr) = run_script::run(
         r#"
         cmp -n `blockdev --getsize64 $1` $1 $2 0 5M
+        test $? -eq $3
     "#,
-    &vec![nexus_device.into(), child_device.into()],
+    &vec![nexus_device.into(), device.into(), (!expected_pass as i32).to_string()],
     &run_script::ScriptOptions::new(),
     )
     .unwrap();

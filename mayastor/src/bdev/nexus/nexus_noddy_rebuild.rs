@@ -15,6 +15,8 @@ use crate::{
     },
 };
 
+use std::cmp;
+
 impl Nexus {
     // rebuilds only the first bad child it finds
     pub(crate) async fn noddy_rebuild(&mut self) -> NexusState {
@@ -38,8 +40,14 @@ impl Nexus {
             None => return self.set_state(state),
         };
 
-        let block_count = self.bdev.num_blocks();
-        let block_size = self.bdev.block_len();
+        let block_size = self.bdev.block_len() as u64;
+        let max_rebuild_size = 10u64 * 1024 * 1024; // 10MiB
+        let max_blocks = max_rebuild_size / block_size;
+
+        // At the moment if we copy the whole bdev it causes the js tests to timeout
+        // One option is to invoke the rebuild through a different command (ai - not on the add_child)
+        // TODO: fix this
+        let block_count = cmp::min(self.bdev.num_blocks(), max_blocks);
 
         info!("Rebuilding child {} from {}, blocks: {}, blockSize: {}", bad_child.name, good_child.name, block_count, block_size);
 
