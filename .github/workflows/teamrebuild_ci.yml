@@ -28,12 +28,4 @@ jobs:
         sudo modprobe nbd; sudo modprobe nvme; sudo modprobe nvmet; sudo modprobe xfs
         echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
         cat /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
-        sudo docker run --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw \                                                                                                                                                             ─╯
-        -v /dev/hugepages:/dev/hugepages:rw --network host \
-        -v $PWD:/MayaStor mayadata/ms-buildenv:latest /bin/sh -c "cd /MayaStor; git submodule update --init; git status"
-        
-    # Runs a set of commands using the runners shell
-    - name: Run a multi-line script
-      run: |
-        echo Add other actions to build,
-        echo test, and deploy your project.
+        sudo docker run --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor mayadata/ms-buildenv:latest /bin/sh -c "cd /MayaStor; git submodule update --init; git status"
