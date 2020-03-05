@@ -49,6 +49,8 @@ async fn rebuild_test_start() {
     let (s, r) = unbounded::<String>();
     std::thread::spawn(move || s.send(compare_nexus_device(&nexus_device, DISKNAME1, true)));
     reactor_poll!(r);
+
+    // test
     
     let nexus_device = device.clone();
     let (s, r) = unbounded::<String>();
