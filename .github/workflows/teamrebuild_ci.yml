@@ -38,7 +38,7 @@ jobs:
         docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor teamrebuild/teamrebuild:latest tail -f /dev/null
         
         # Setup cached cargo and node modules
-        docker exec "nix" /bin/sh -c "mv /usr/src/app/mayastor-test/node_modules/ /MayaStor/mayastor-test; mv /usr/src/app/vendor/ /MayaStor/mayastor; mkdir .cargo 2>/dev/null || true; cat config >> /MayaStor/.cargo/config; cat config >> /MayaStor/mayastor/.cargo/config"
+        docker exec "nix" /bin/sh -c "mv /usr/src/app/mayastor-test/node_modules/ /MayaStor/mayastor-test; mv /usr/src/app/vendor/ /MayaStor/mayastor; mkdir /MayaStor/.cargo 2>/dev/null || true; cat config >> /MayaStor/.cargo/config; cat config >> /MayaStor/mayastor/.cargo/config"
     
     - name: Build
       run: |
