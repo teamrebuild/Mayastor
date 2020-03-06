@@ -20,14 +20,34 @@ jobs:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
     - uses: actions/checkout@v2
 
-    # Runs multiple commands using the runners shell
+    - name: Kernel Setup
+      run: |
+        # Load required kernel modules
+        sudo modprobe nbd; sudo modprobe nvme; sudo modprobe nvmet; sudo modprobe xfs
+        # Allocate 1024 2KiB hugepages
+        echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
+        
+    - name: Env Setup
+      run: |
+        # We'll be running as root within docker so we don't need sudo
+        sed -i 's/^runner/#runner/1' ./mayastor/.cargo/config
+        # Fetch spdk-sys
+        git submodule update --init
+        
+        # Launch the nix container as a daemon
+        docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor teamrebuild/teamrebuild:latest tail -f /dev/null
+        
+        # Setup cached cargo and node modules
+        docker exec "nix" /bin/sh -c "mv /usr/src/app/mayastor-test/node_modules/ /MayaStor/mayastor-test; mv /usr/src/app/vendor/ /MayaStor/mayastor; cat config >> /MayaStor/.cargo/config; cat config >> /MayaStor/mayastor/.cargo/config"
+    
     - name: Build
       run: |
-        sudo modprobe nbd; sudo modprobe nvme; sudo modprobe nvmet; sudo modprobe xfs
-        echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
-        sed -i 's/^runner/#runner/1' ./mayastor/.cargo/config
-        #docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor mayadata/ms-buildenv:latest tail -f /dev/null
-        docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor teamrebuild/teamrebuild:latest tail -f /dev/null
-        docker exec "nix" /bin/sh -c "mv /usr/src/app/mayastor-test/node_modules/ /MayaStor/mayastor-test; mv /usr/src/app/vendor/ /MayaStor/mayastor; cat config >> /MayaStor/mayastor/.cargo/config"
-        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'git submodule update --init; cargo build --all; ./test.sh'"
+        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo build --all'"
+        
+    - name: Test
+      run: |
+        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run './test.sh'"
+        
+    - name: End
+      run: |
         docker kill "nix"
