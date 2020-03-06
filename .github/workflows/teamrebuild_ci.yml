@@ -26,6 +26,8 @@ jobs:
         sudo modprobe nbd; sudo modprobe nvme; sudo modprobe nvmet; sudo modprobe xfs
         echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
         sed -i 's/^runner/#runner/1' ./mayastor/.cargo/config
-        docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor mayadata/ms-buildenv:latest tail -f /dev/null
+        #docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor mayadata/ms-buildenv:latest tail -f /dev/null
+        docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor teamrebuild/teamrebuild:latest tail -f /dev/null
+        docker exec "nix" /bin/sh -c "mv /usr/src/app/mayastor-test/node_modules/ /MayaStor/mayastor-test; cat config >> /MayaStor/mayastor/.cargo/config"
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'git submodule update --init; cargo build --all; ./test.sh'"
         docker kill "nix"
