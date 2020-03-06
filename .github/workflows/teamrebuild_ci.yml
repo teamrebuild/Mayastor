@@ -27,4 +27,4 @@ jobs:
         echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
         sed -i 's/^runner/#runner/1' ./mayastor/.cargo/config
         docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor mayadata/ms-buildenv:latest tail -f /dev/null
-        docker exec -it "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'git submodule update --init; cargo build --all; ./test.sh'"
+        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'git submodule update --init; cargo build --all; ./test.sh'"
