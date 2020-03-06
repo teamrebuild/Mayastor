@@ -28,3 +28,4 @@ jobs:
         sed -i 's/^runner/#runner/1' ./mayastor/.cargo/config
         docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor mayadata/ms-buildenv:latest tail -f /dev/null
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'git submodule update --init; cargo build --all; ./test.sh'"
+        docker kill "nix"
