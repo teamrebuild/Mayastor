@@ -493,6 +493,8 @@ describe('nexus', function() {
     exec('sleep 1; lsblk --json', (err, stdout, stderr) => {
       if (err) return done(err);
       let output = JSON.parse(stdout);
+      // We have to disable the dangling NBD test as it seems to fail all the time, 
+      // suspect it's because we're running on quite an older kernel on azure...
       //output.blockdevices.forEach(e => {
       //  assert(e.name.indexOf('nbd') === -1, `NBD Device found:\n${stdout}`);
       //});
