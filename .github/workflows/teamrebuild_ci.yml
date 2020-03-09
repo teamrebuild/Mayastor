@@ -60,6 +60,9 @@ jobs:
 
     - name: Nix Setup
       run: |
+        # Fetch spdk-sys
+        git submodule update --init
+        
         # Launch the nix container as a daemon
         docker run -d --name "nix" --rm -v $PWD:/MayaStor teamrebuild/ci:latest tail -f /dev/null
     - name: Pretty
