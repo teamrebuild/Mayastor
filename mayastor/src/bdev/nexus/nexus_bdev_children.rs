@@ -140,12 +140,13 @@ impl Nexus {
                 // mark faulted so that it can never take part in the IO path of
                 // the nexus until brought online.
                 child.state = ChildState::Faulted;
+
+                // how to "tag" a child as out of sync?
+                child.repairing = true;
                 self.children.push(child);
                 self.child_count += 1;
-                // TODO -- rsync labels
                 self.set_state(NexusState::Degraded);
 
-                // Rebuild
                 self.start_rebuild(uri);
 
                 Ok(self.state)
