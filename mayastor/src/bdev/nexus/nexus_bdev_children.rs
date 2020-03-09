@@ -28,6 +28,7 @@ use snafu::ResultExt;
 use crate::{
     bdev::nexus::{
         nexus_bdev::{
+            nexus_lookup,
             CreateChild,
             DestroyChild,
             Error,
@@ -40,8 +41,9 @@ use crate::{
         nexus_child::{ChildState, NexusChild},
         nexus_label::NexusLabel,
     },
-    core::Bdev,
+    core::{Bdev, Reactors},
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
+    rebuild_task::RebuildTask,
 };
 
 impl Nexus {
@@ -141,7 +143,12 @@ impl Nexus {
                 self.children.push(child);
                 self.child_count += 1;
                 // TODO -- rsync labels
-                Ok(self.set_state(NexusState::Degraded))
+                self.set_state(NexusState::Degraded);
+
+                // Rebuild
+                self.start_rebuild(uri);
+
+                Ok(self.state)
             }
             Err(e) => {
                 if let Err(err) = bdev_destroy(uri).await {
@@ -156,6 +163,26 @@ impl Nexus {
                 })
             }
         }
+    }
+
+    pub fn start_rebuild(&mut self, destination: &str) {
+        self.rebuilds.push(RebuildTask::new(
+            self.name.clone(),
+            self.children[0].name.clone(),
+            destination.to_string(),
+        ));
+
+        let nexus_name = self.name.clone();
+        Reactors::current().send_future(async move {
+            RebuildTask::run(nexus_name.clone()).await;
+            RebuildTask::print_state(nexus_name.clone());
+        });
+    }
+
+    pub fn complete_rebuild(nexus_name: String) {
+        println!("Complete rebuild");
+        let nexus = nexus_lookup(&nexus_name).unwrap();
+        nexus.rebuilds.remove(0);
     }
 
     /// Destroy child with given uri.
