@@ -1,5 +1,8 @@
 use crate::{
-    bdev::nexus::nexus_bdev::{nexus_lookup, Nexus},
+    bdev::nexus::{
+        nexus_bdev::{nexus_lookup, Nexus},
+        nexus_child::NexusChild,
+    },
     core::{Bdev, BdevHandle, Reactors},
 };
 use std::convert::{TryFrom, TryInto};
@@ -57,6 +60,14 @@ impl RebuildTask {
         BdevHandle::try_from(descriptor).unwrap()
     }
 
+    /// get the start and end offsets of the data region for the Nexus child
+    async fn get_data_offsets(child: &mut NexusChild) -> (u64, u64) {
+        let label = child.probe_label().await.unwrap();
+        let start = label.offset();
+        let end = start + label.get_block_count();
+        (start, end)
+    }
+
     /// rebuild a non-healthy child from a healthy child
     pub async fn run(nexus_name: String) {
         let nexus = nexus_lookup(&nexus_name).unwrap();
@@ -72,15 +83,13 @@ impl RebuildTask {
         let task = &mut nexus.rebuilds[0];
         task.state = RebuildState::Running;
 
-        let src_child = nexus
+        let mut src_child = nexus
             .children
             .iter_mut()
             .find(|c| c.name == task.source)
             .unwrap();
 
-        let label = src_child.probe_label().await.unwrap();
-        let start = label.offset();
-        let end = start + label.get_block_count();
+        let (start, end) = RebuildTask::get_data_offsets(&mut src_child).await;
 
         info!(
             "Src: start {} end {} block size {}",
