@@ -61,7 +61,7 @@ jobs:
     - name: Nix Setup
       run: |
         # Launch the nix container as a daemon
-        docker run -d --name "nix" --rm -v $PWD:/MayaStor teamrebuild/ci:latest
+        docker run -d --name "nix" --rm -v $PWD:/MayaStor teamrebuild/ci:latest tail -f /dev/null
     - name: Pretty
       run: |
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'prettier --version'"
