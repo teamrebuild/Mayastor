@@ -19,6 +19,7 @@ use std::cmp;
 
 impl Nexus {
     // rebuilds only the first bad child it finds
+    #[allow(dead_code)]
     pub(crate) async fn simple_rebuild(&mut self) -> NexusState {
         // if failed go back to the previous state
         let state = self.state;
