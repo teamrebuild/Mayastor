@@ -92,10 +92,10 @@ impl RebuildTask {
 
         let (start, end) = RebuildTask::get_data_offsets(&mut src_child).await;
 
-        // info!(
-        //     "Src: start {} end {} block size {}",
-        //     start, end, task.block_size
-        // );
+        info!(
+            "Src: start {} end {} block size {}",
+            start, end, task.block_size
+        );
 
         let src_hdl = RebuildTask::get_bdev_handle(&task.source, false);
         let dst_hdl = RebuildTask::get_bdev_handle(&task.destination, true);
@@ -105,8 +105,8 @@ impl RebuildTask {
             // Adjust size of the last segment
             if (offset + task.segment_size) >= start + end {
                 task.segment_size = end - offset;
-                //info!("Adjusting segment size to {}. offset: {}, start: {}, end: {}",
-                //task.segment_size, offset, start, end);
+                info!("Adjusting segment size to {}. offset: {}, start: {}, end: {}",
+                task.segment_size, offset, start, end);
             }
 
             let mut copy_buffer = src_hdl
@@ -142,6 +142,6 @@ impl RebuildTask {
     pub fn print_state(nexus_name: String) {
         let nexus = nexus_lookup(&nexus_name).unwrap();
         let rebuild_task = &nexus.rebuilds[0];
-        println!("Rebuild {:?}", rebuild_task.state);
+        info!("Rebuild {:?}", rebuild_task.state);
     }
 }
