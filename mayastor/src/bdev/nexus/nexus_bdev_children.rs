@@ -41,7 +41,7 @@ use crate::{
         nexus_child::{ChildState, NexusChild},
         nexus_label::NexusLabel,
     },
-    core::{Bdev, Reactors},
+    core::{Bdev},
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
     rebuild_task::RebuildTask,
 };
@@ -147,7 +147,11 @@ impl Nexus {
                 self.child_count += 1;
                 self.set_state(NexusState::Degraded);
 
-                self.start_rebuild(uri);
+                if let Err(e) = self.sync_labels().await {
+                    error!("Failed to sync labels {:?}", e);
+                }
+
+                self.start_rebuild(uri).await;
 
                 Ok(self.state)
             }
@@ -166,24 +170,38 @@ impl Nexus {
         }
     }
 
-    pub fn start_rebuild(&mut self, destination: &str) {
+    pub async fn start_rebuild(&mut self, destination: &str) {
         self.rebuilds.push(RebuildTask::new(
             self.name.clone(),
             self.children[0].name.clone(),
             destination.to_string(),
-        ));
+        ).await);
 
-        let nexus_name = self.name.clone();
-        Reactors::current().send_future(async move {
-            RebuildTask::run(nexus_name.clone()).await;
-            RebuildTask::print_state(nexus_name.clone());
-        });
+        RebuildTask::start(self.name.to_string(), destination.to_string());
     }
 
-    pub fn complete_rebuild(nexus_name: String) {
-        println!("Complete rebuild");
-        let nexus = nexus_lookup(&nexus_name).unwrap();
-        nexus.rebuilds.remove(0);
+    pub async fn on_rebuild_complete(&mut self, task: String) {
+        let ix = self.rebuilds.iter().position(|t| t.destination == task).unwrap();
+        self.rebuilds.remove(ix);
+
+        let recovered_child = self.children.iter_mut().find(|c| c.name == task).unwrap();
+        
+        recovered_child.repairing = false;
+        recovered_child.state = ChildState::Open;
+
+        // child can now be part of the IO path
+        self.reconfigure(DREvent::ChildOnline).await;
+        
+        // Actually we'd have to check if all other children are healthy
+        // and if not maybe we can start the other rebuild's?
+        self.set_state(NexusState::Online);
+    }
+
+    pub async fn complete_rebuild(nexus: String, task: String) {
+        info!("nexus {} received complete_rebuild from task {}", nexus, task);
+
+        let nexus = nexus_lookup(&nexus).unwrap();
+        nexus.on_rebuild_complete(task).await;
     }
 
     /// Destroy child with given uri.

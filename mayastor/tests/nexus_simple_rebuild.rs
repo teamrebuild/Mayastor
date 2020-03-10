@@ -58,14 +58,21 @@ async fn rebuild_test_start() {
     // add the second child
     nexus.add_child(BDEVNAME2).await.unwrap();
 
-    // crude wait for the rebuild for the moment
-    // std::thread::sleep(std::time::Duration::from_secs(10));
+    // crude wait for the rebuild
+    let (s, r) = unbounded::<String>();
+    std::thread::spawn(move || s.send(delay(std::time::Duration::from_millis(100))));
+    reactor_poll!(r);
 
-    //let (s, r) = unbounded::<String>();
-    //std::thread::spawn(move || s.send(compare_devices(DISKNAME1, DISKNAME2, true)));
-    //reactor_poll!(r);
+    let (s, r) = unbounded::<String>();
+    std::thread::spawn(move || s.send(compare_devices(DISKNAME1, DISKNAME2, true)));
+    reactor_poll!(r);
 
     mayastor_env_stop(0);
+}
+
+fn delay(dur: std::time::Duration) -> String {
+    std::thread::sleep(dur);
+    "done".to_string()
 }
 
 async fn create_nexus() {
@@ -102,7 +109,7 @@ pub fn compare_nexus_device(nexus_device: &str, device: &str, expected_pass: boo
 }
 
 pub fn compare_devices(first_device: &str, second_device: &str, expected_pass: bool) -> String {
-    let (exit, stdout, _stderr) = run_script::run(
+    let (exit, stdout, stderr) = run_script::run(
         r#"
         cmp -b $1 $2 5M 5M
         test $? -eq $3
@@ -111,6 +118,6 @@ pub fn compare_devices(first_device: &str, second_device: &str, expected_pass: b
     &run_script::ScriptOptions::new(),
     )
     .unwrap();
-    assert_eq!(exit, 0);
+    assert_eq!(exit, 0, "stdout: {}\nstderr: {}", stdout, stderr);
     stdout
 }

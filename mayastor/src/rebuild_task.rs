@@ -1,9 +1,8 @@
 use crate::{
     bdev::nexus::{
         nexus_bdev::{nexus_lookup, Nexus},
-        nexus_child::NexusChild,
     },
-    core::{Bdev, BdevHandle, Reactors},
+    core::{Bdev, BdevHandle, Reactors, DmaBuf},
 };
 use std::convert::{TryFrom, TryInto};
 
@@ -20,37 +19,150 @@ enum RebuildState {
 pub struct RebuildTask {
     nexus_name: String,
     source: String,
-    destination: String,
+    source_hdl: BdevHandle,
+    pub destination: String,
+    destination_hdl: BdevHandle,
     block_size: u64,
-    segment_size: u64, // num blocks per segment
-    current_segment: u64,
+    start: u64,
+    end: u64,
+    current: u64,
+    segment_size_blks: u64,
+    copy_buffer: DmaBuf,
     state: RebuildState,
 }
 
+pub struct RebuildStats {}
+
+pub trait RebuildActions {
+    fn stats(&self) -> Option<RebuildStats>;
+    fn start(&self) -> ();
+    fn stop(&self) -> ();
+    fn pause(&self) -> ();
+    fn resume(&self) -> ();
+}
+
+// todo: address unwrap errors
 impl RebuildTask {
-    pub fn new(
+    // ideally we should move the nexus and bdev out of this and make
+    // the task as generic as possible ( a simple memcpy )
+    // then it should be simple to unittest
+    pub async fn new(
         nexus_name: String,
         source: String,
         destination: String,
     ) -> RebuildTask {
-        let s = Bdev::lookup_by_name(&source).unwrap();
-        let d = Bdev::lookup_by_name(&destination).unwrap();
-        if !RebuildTask::validate(&s, &d) {
-            println!("Failed to validate for rebuild task");
+        let source_hdl = RebuildTask::get_bdev_handle(&source, false);
+        let destination_hdl = RebuildTask::get_bdev_handle(&destination, true);
+        if !RebuildTask::validate(&source_hdl.get_bdev(), &destination_hdl.get_bdev()) {
+            error!("Failed to validate for rebuild task");
         };
 
+        let nexus = nexus_lookup(&nexus_name).unwrap();
+
+        let (start, end) = (nexus.data_ent_offset, nexus.bdev.num_blocks() + nexus.data_ent_offset);
+        let segment_size = 10 * 1024;
+        // validation passed, block size is the same for both
+        let block_size = destination_hdl.get_bdev().block_len() as u64;
+        let segment_size_blks = (segment_size / block_size) as u64;
+
+        let copy_buffer = source_hdl
+            .dma_malloc(
+                (segment_size_blks * block_size) as usize,
+            )
+            .unwrap();
+        
         RebuildTask {
             nexus_name,
             source,
+            source_hdl,
             destination,
-            block_size: s.block_len() as u64, /* validation passed, block
-                                               * size same for both */
-            segment_size: 20, // 10KiB segment size (512 block size)
-            current_segment: 0,
+            destination_hdl,
+            start,
+            end,
+            current: start,
+            block_size,
+            segment_size_blks,
+            copy_buffer,
             state: RebuildState::Pending,
         }
     }
 
+    /// rebuild a non-healthy child from a healthy child
+    pub async fn run(&mut self) {
+        self.state = RebuildState::Running;
+        self.stats();
+
+        while self.current < self.end {
+            self.copy_one().await;
+            // check if the task received a "pause/stop" request, eg child is being removed
+            // alternatively we make this callback driven
+        }
+
+        self.state = RebuildState::Completed;
+        self.send_complete();
+    }
+
+    async fn copy_one(&mut self) {
+        // Adjust size of the last segment
+        if (self.current + self.segment_size_blks) >= self.start + self.end {
+            self.segment_size_blks = self.end - self.current;
+
+            self.copy_buffer = self.source_hdl
+                .dma_malloc(
+                    (self.segment_size_blks * self.block_size).try_into().unwrap(),
+                )
+                .unwrap();
+
+            info!("Adjusting segment size to {}. offset: {}, start: {}, end: {}",
+                self.segment_size_blks, self.current, self.start, self.end);
+        }
+
+        self.source_hdl
+            .read_at(self.current * self.block_size, &mut self.copy_buffer)
+            .await
+            .unwrap();
+
+        self.destination_hdl
+            .write_at(self.current * self.block_size, &self.copy_buffer)
+            .await
+            .unwrap();
+
+        self.current += self.segment_size_blks;
+    }
+
+    fn send_complete(&self) {
+        let reactor = Reactors::current();
+        let n = self.nexus_name.clone();
+        let t = self.destination.clone();
+        reactor.send_future(async move {
+            // replace with a channel
+            Nexus::complete_rebuild(n, t).await;
+        });
+    }
+
+    pub fn print_state(&self) {
+        info!("Rebuild {:?}", self.state);
+    }
+}
+
+impl RebuildActions for RebuildTask {
+    fn stats(&self) -> Option<RebuildStats> {
+        info!(
+            "State: {:?}, Src: start {} end {} current {} block size {}",
+            self.state, self.start, self.end, self.current, self.block_size
+        );
+
+        None
+    }
+
+    fn start(&self) {}
+    fn stop(&self) {}
+    fn pause(&self) {}
+    fn resume(&self) {}
+}
+
+/// Helper Methods
+impl RebuildTask {
     fn validate(source: &Bdev, destination: &Bdev) -> bool {
         !(source.size_in_bytes() != destination.size_in_bytes()
             || source.block_len() != destination.block_len())
@@ -61,87 +173,12 @@ impl RebuildTask {
         BdevHandle::try_from(descriptor).unwrap()
     }
 
-    /// get the start and end offsets of the data region for the Nexus child
-    async fn get_data_offsets(child: &mut NexusChild) -> (u64, u64) {
-        let label = child.probe_label().await.unwrap();
-        let start = label.offset();
-        let end = start + label.get_block_count();
-        (start, end)
-    }
-
-    /// rebuild a non-healthy child from a healthy child
-    pub async fn run(nexus_name: String) {
-        let nexus = nexus_lookup(&nexus_name).unwrap();
-
-        {
-            // Sync labels
-            match nexus.sync_labels().await {
-                Ok(_) => println!("Synced labels"),
-                Err(e) => println!("Failed to sync labels {:?}", e),
-            }
-        }
-
-        let task = &mut nexus.rebuilds[0];
-        task.state = RebuildState::Running;
-
-        let mut src_child = nexus
-            .children
-            .iter_mut()
-            .find(|c| c.name == task.source)
-            .unwrap();
-
-        let (start, end) = RebuildTask::get_data_offsets(&mut src_child).await;
-
-        info!(
-            "Src: start {} end {} block size {}",
-            start, end, task.block_size
-        );
-
-        let src_hdl = RebuildTask::get_bdev_handle(&task.source, false);
-        let dst_hdl = RebuildTask::get_bdev_handle(&task.destination, true);
-
-        let mut offset = start;
-        while offset < end {
-            // Adjust size of the last segment
-            if (offset + task.segment_size) >= start + end {
-                task.segment_size = end - offset;
-                info!("Adjusting segment size to {}. offset: {}, start: {}, end: {}",
-                task.segment_size, offset, start, end);
-            }
-
-            let mut copy_buffer = src_hdl
-                .dma_malloc(
-                    (task.segment_size * task.block_size).try_into().unwrap(),
-                )
-                .unwrap();
-
-            src_hdl
-                .read_at(offset * task.block_size, &mut copy_buffer)
-                .await
-                .unwrap();
-
-            dst_hdl
-                .write_at(offset * task.block_size, &copy_buffer)
-                .await
-                .unwrap();
-            offset += task.segment_size;
-        }
-
-        task.state = RebuildState::Completed;
-        task.send_complete();
-    }
-
-    fn send_complete(&self) {
-        let reactor = Reactors::current();
-        let n = self.nexus_name.clone();
-        reactor.send_future(async move {
-            Nexus::complete_rebuild(n);
+    pub fn start(nexus_name: String, task: String) {
+        Reactors::current().send_future(async move {
+            let nexus = nexus_lookup(&nexus_name).unwrap();
+            let task = nexus.rebuilds.iter_mut().find(|t| t.destination == task).unwrap();
+            task.run().await;
+            task.print_state();
         });
-    }
-
-    pub fn print_state(nexus_name: String) {
-        let nexus = nexus_lookup(&nexus_name).unwrap();
-        let rebuild_task = &nexus.rebuilds[0];
-        info!("Rebuild {:?}", rebuild_task.state);
     }
 }
