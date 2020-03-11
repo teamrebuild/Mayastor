@@ -41,7 +41,7 @@ use crate::{
         nexus_child::{ChildState, NexusChild},
         nexus_label::NexusLabel,
     },
-    core::Bdev,
+    core::{Bdev, Reactors},
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
     rebuild_task::RebuildTask,
 };
@@ -177,6 +177,11 @@ impl Nexus {
                 self.name.clone(),
                 self.children[0].name.clone(),
                 destination.to_string(),
+                | nexus, task | {
+                    Reactors::current().send_future(async move {
+                        Nexus::complete_rebuild(nexus, task).await;
+                    });
+                }
             )
             .await,
         );

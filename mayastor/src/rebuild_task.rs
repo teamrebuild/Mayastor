@@ -1,6 +1,6 @@
 use crate::{
     bdev::nexus::{
-        nexus_bdev::{nexus_lookup, Nexus},
+        nexus_bdev::{nexus_lookup},
     },
     core::{Bdev, BdevHandle, Reactors, DmaBuf},
 };
@@ -28,6 +28,7 @@ pub struct RebuildTask {
     current: u64,
     segment_size_blks: u64,
     copy_buffer: DmaBuf,
+    pub complete: fn(String, String) -> (),
     state: RebuildState,
 }
 
@@ -50,7 +51,9 @@ impl RebuildTask {
         nexus_name: String,
         source: String,
         destination: String,
-    ) -> RebuildTask {
+        complete: fn(String, String) -> (),
+    ) -> RebuildTask
+    {
         let source_hdl = RebuildTask::get_bdev_handle(&source, false);
         let destination_hdl = RebuildTask::get_bdev_handle(&destination, true);
         if !RebuildTask::validate(&source_hdl.get_bdev(), &destination_hdl.get_bdev()) {
@@ -83,6 +86,7 @@ impl RebuildTask {
             block_size,
             segment_size_blks,
             copy_buffer,
+            complete,
             state: RebuildState::Pending,
         }
     }
@@ -131,13 +135,8 @@ impl RebuildTask {
     }
 
     fn send_complete(&self) {
-        let reactor = Reactors::current();
-        let n = self.nexus_name.clone();
-        let t = self.destination.clone();
-        reactor.send_future(async move {
-            // replace with a channel
-            Nexus::complete_rebuild(n, t).await;
-        });
+        let complete = self.complete;
+        complete(self.nexus_name.clone(), self.destination.clone());
     }
 
     pub fn print_state(&self) {
@@ -148,8 +147,9 @@ impl RebuildTask {
 impl RebuildActions for RebuildTask {
     fn stats(&self) -> Option<RebuildStats> {
         info!(
-            "State: {:?}, Src: start {} end {} current {} block size {}",
-            self.state, self.start, self.end, self.current, self.block_size
+            "State: {:?}, Src: {}, Dst: {}, start: {}, end: {}, current: {}, block: {}",
+            self.state, self.source, self.destination,
+            self.start, self.end, self.current, self.block_size
         );
 
         None

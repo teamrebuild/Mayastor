@@ -58,6 +58,9 @@ async fn rebuild_test_start() {
     // add the second child
     nexus.add_child(BDEVNAME2).await.unwrap();
 
+    // kick's off the rebuild (NOWAIT)
+    nexus.start_rebuild(BDEVNAME2).await.unwrap();
+
     // crude wait for the rebuild
     let (s, r) = unbounded::<String>();
     std::thread::spawn(move || s.send(delay(std::time::Duration::from_millis(100))));
