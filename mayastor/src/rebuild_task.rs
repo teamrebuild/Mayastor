@@ -2,9 +2,19 @@ use crate::{
     bdev::nexus::{
         nexus_bdev::{nexus_lookup},
     },
-    core::{Bdev, BdevHandle, Reactors, DmaBuf},
+    core::{Bdev, BdevHandle, Reactors, DmaBuf, DmaError},
 };
 use std::convert::{TryFrom, TryInto};
+use snafu::{ResultExt, Snafu};
+
+#[derive(Debug, Snafu)]
+#[snafu(visibility = "pub(crate)")]
+pub enum RebuildError {
+    #[snafu(display("Failed to allocate buffer for the rebuild copy"))]
+    NoCopyBuffer { source: DmaError },
+    #[snafu(display("Failed to validate creation parameters"))]
+    InvalidParameters { },
+}
 
 #[derive(Debug)]
 enum RebuildState {
@@ -52,12 +62,12 @@ impl RebuildTask {
         source: String,
         destination: String,
         complete: fn(String, String) -> (),
-    ) -> RebuildTask
+    ) -> Result<RebuildTask,RebuildError>
     {
         let source_hdl = RebuildTask::get_bdev_handle(&source, false);
         let destination_hdl = RebuildTask::get_bdev_handle(&destination, true);
         if !RebuildTask::validate(&source_hdl.get_bdev(), &destination_hdl.get_bdev()) {
-            error!("Failed to validate for rebuild task");
+            return Err(RebuildError::InvalidParameters {})
         };
 
         let nexus = nexus_lookup(&nexus_name).unwrap();
@@ -71,10 +81,9 @@ impl RebuildTask {
         let copy_buffer = source_hdl
             .dma_malloc(
                 (segment_size_blks * block_size) as usize,
-            )
-            .unwrap();
+            ).context(NoCopyBuffer {})?;
         
-        RebuildTask {
+        Ok(RebuildTask {
             nexus_name,
             source,
             source_hdl,
@@ -88,7 +97,7 @@ impl RebuildTask {
             copy_buffer,
             complete,
             state: RebuildState::Pending,
-        }
+        })
     }
 
     /// rebuild a non-healthy child from a healthy child

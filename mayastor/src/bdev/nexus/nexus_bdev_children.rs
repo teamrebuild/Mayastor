@@ -31,6 +31,7 @@ use crate::{
             nexus_lookup,
             CreateChild,
             DestroyChild,
+            StartRebuild,
             Error,
             Nexus,
             NexusState,
@@ -43,7 +44,7 @@ use crate::{
     },
     core::{Bdev, Reactors},
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
-    rebuild_task::RebuildTask,
+    rebuild_task::{RebuildTask}
 };
 
 impl Nexus {
@@ -183,7 +184,7 @@ impl Nexus {
                     });
                 }
             )
-            .await,
+            .await.context(StartRebuild { child: destination.to_string()})?
         );
 
         RebuildTask::start(self.name.to_string(), destination.to_string());
