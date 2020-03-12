@@ -2,9 +2,9 @@ use crate::{
     bdev::nexus::{
         nexus_bdev::{nexus_lookup},
     },
-    core::{Bdev, BdevHandle, Reactors, DmaBuf, DmaError},
+    core::{Bdev, BdevHandle, Reactors, DmaBuf, DmaError, CoreError},
 };
-use std::convert::{TryFrom, TryInto};
+use std::convert::{TryFrom};
 use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -14,13 +14,16 @@ pub enum RebuildError {
     NoCopyBuffer { source: DmaError },
     #[snafu(display("Failed to validate creation parameters"))]
     InvalidParameters { },
+    #[snafu(display("Failed to get a handle for bdev {}", bdev))]
+    NoBdevHandle { source: CoreError, bdev: String },
+    #[snafu(display("IO failed for bdev {}", bdev))]
+    IoError { source: CoreError, bdev: String },
 }
 
-#[derive(Debug)]
-enum RebuildState {
+#[derive(Debug, PartialEq)]
+pub enum RebuildState {
     Pending,
     Running,
-    #[allow(dead_code)]
     Failed,
     Completed,
 }
@@ -38,8 +41,8 @@ pub struct RebuildTask {
     current: u64,
     segment_size_blks: u64,
     copy_buffer: DmaBuf,
-    pub complete: fn(String, String) -> (),
-    state: RebuildState,
+    complete: fn(String, String) -> (),
+    pub state: RebuildState,
 }
 
 pub struct RebuildStats {}
@@ -61,18 +64,20 @@ impl RebuildTask {
         nexus_name: String,
         source: String,
         destination: String,
+        start: u64,
+        end: u64,
         complete: fn(String, String) -> (),
     ) -> Result<RebuildTask,RebuildError>
     {
-        let source_hdl = RebuildTask::get_bdev_handle(&source, false);
-        let destination_hdl = RebuildTask::get_bdev_handle(&destination, true);
+        let source_hdl = RebuildTask::get_bdev_handle(&source, false)
+            .context(NoBdevHandle { bdev: &source })?;
+        let destination_hdl = RebuildTask::get_bdev_handle(&destination, true)
+            .context(NoBdevHandle { bdev: &destination })?;
+
         if !RebuildTask::validate(&source_hdl.get_bdev(), &destination_hdl.get_bdev()) {
             return Err(RebuildError::InvalidParameters {})
         };
 
-        let nexus = nexus_lookup(&nexus_name).unwrap();
-
-        let (start, end) = (nexus.data_ent_offset, nexus.bdev.num_blocks() + nexus.data_ent_offset);
         let segment_size = 10 * 1024;
         // validation passed, block size is the same for both
         let block_size = destination_hdl.get_bdev().block_len() as u64;
@@ -100,29 +105,34 @@ impl RebuildTask {
         })
     }
 
-    /// rebuild a non-healthy child from a healthy child
+    /// rebuild a non-healthy child from a healthy child from start to end
     pub async fn run(&mut self) {
         self.state = RebuildState::Running;
+        self.current = self.start;
         self.stats();
 
         while self.current < self.end {
-            self.copy_one().await;
-            // check if the task received a "pause/stop" request, eg child is being removed
-            // alternatively we make this callback driven
+            if let Err(e) = self.copy_one().await {
+                error!("Failed to copy segment {}", e);
+                self.state = RebuildState::Failed;
+                self.send_complete();
+            }
+            // TODO: check if the task received a "pause/stop" request, eg child is being removed
         }
 
         self.state = RebuildState::Completed;
         self.send_complete();
     }
 
-    async fn copy_one(&mut self) {
+    /// copy one segment worth of data from source into destination
+    async fn copy_one(&mut self) -> Result<(),RebuildError> {
         // Adjust size of the last segment
         if (self.current + self.segment_size_blks) >= self.start + self.end {
             self.segment_size_blks = self.end - self.current;
 
             self.copy_buffer = self.source_hdl
                 .dma_malloc(
-                    (self.segment_size_blks * self.block_size).try_into().unwrap(),
+                    (self.segment_size_blks * self.block_size) as usize,
                 )
                 .unwrap();
 
@@ -133,14 +143,15 @@ impl RebuildTask {
         self.source_hdl
             .read_at(self.current * self.block_size, &mut self.copy_buffer)
             .await
-            .unwrap();
+            .context(IoError { bdev: &self.source })?;
 
         self.destination_hdl
             .write_at(self.current * self.block_size, &self.copy_buffer)
             .await
-            .unwrap();
+            .context(IoError { bdev: &self.destination })?;
 
         self.current += self.segment_size_blks;
+        Ok(())
     }
 
     fn send_complete(&self) {
@@ -177,17 +188,16 @@ impl RebuildTask {
             || source.block_len() != destination.block_len())
     }
 
-    fn get_bdev_handle(name: &str, read_write: bool) -> BdevHandle {
+    fn get_bdev_handle(name: &str, read_write: bool) -> Result<BdevHandle,CoreError> {
         let descriptor = Bdev::open_by_name(name, read_write).unwrap();
-        BdevHandle::try_from(descriptor).unwrap()
+        BdevHandle::try_from(descriptor)
     }
 
-    pub fn start(nexus_name: String, task: String) {
+    pub fn start(nexus: String, target: String) {
         Reactors::current().send_future(async move {
-            let nexus = nexus_lookup(&nexus_name).unwrap();
-            let task = nexus.rebuilds.iter_mut().find(|t| t.destination == task).unwrap();
+            let nexus = nexus_lookup(&nexus).unwrap();
+            let task = nexus.rebuilds.iter_mut().find(|t| t.destination == target).unwrap();
             task.run().await;
-            task.print_state();
         });
     }
 }

@@ -127,6 +127,11 @@ pub enum Error {
         source: RebuildError,
         child: String,
     },
+    #[snafu(display("Failed to complete rebuild of child {}, reason: {}", child, reason))]
+    CompleteRebuild {
+        child: String,
+        reason: String,
+    },
 }
 
 impl RpcErrorCode for Error {

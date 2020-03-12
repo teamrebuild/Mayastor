@@ -44,7 +44,7 @@ use crate::{
     },
     core::{Bdev, Reactors},
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
-    rebuild_task::{RebuildTask}
+    rebuild_task::{RebuildTask, RebuildState},
 };
 
 impl Nexus {
@@ -142,14 +142,13 @@ impl Nexus {
                 // the nexus until brought online.
                 child.state = ChildState::Faulted;
 
-                // how to "tag" a child as out of sync?
-                child.repairing = true;
                 self.children.push(child);
                 self.child_count += 1;
                 self.set_state(NexusState::Degraded);
 
                 if let Err(e) = self.sync_labels().await {
                     error!("Failed to sync labels {:?}", e);
+                    // todo: how to signal this?
                 }
 
                 Ok(self.state)
@@ -178,6 +177,8 @@ impl Nexus {
                 self.name.clone(),
                 self.children[0].name.clone(),
                 destination.to_string(),
+                self.data_ent_offset,
+                self.bdev.num_blocks() + self.data_ent_offset,
                 | nexus, task | {
                     Reactors::current().send_future(async move {
                         Nexus::complete_rebuild(nexus, task).await;
@@ -191,26 +192,48 @@ impl Nexus {
         Ok(())
     }
 
-    pub async fn on_rebuild_complete(&mut self, task: String) {
-        let ix = self
-            .rebuilds
-            .iter()
-            .position(|t| t.destination == task)
-            .unwrap();
-        self.rebuilds.remove(ix);
+    /// On rebuild task completion it updates the child state and removes the rebuild task
+    /// in case of failure the child is left in a Faulted State
+    async fn on_rebuild_complete(&mut self, task: String) -> Result<(),Error> {
+        let task_index = match self.rebuilds.iter().position(|t| t.destination == task) {
+            Some(task_index) => task_index,
+            None => {
+                return Err(Error::CompleteRebuild {
+                    child: task,
+                    reason: "rebuild task not found in the nexus".to_string(),
+                });
+            }
+        };
 
-        let recovered_child =
-            self.children.iter_mut().find(|c| c.name == task).unwrap();
+        let task = self.rebuilds.remove(task_index);
+
+        let recovered_child = match self.children.iter_mut().find(|c| c.name == task.destination) {
+            Some(child) => child,
+            None => {
+                return Err(Error::CompleteRebuild {
+                    child: task.destination,
+                    reason: "Missing destination child".to_string(),
+                });
+            }
+        };
 
         recovered_child.repairing = false;
-        recovered_child.state = ChildState::Open;
 
-        // child can now be part of the IO path
-        self.reconfigure(DREvent::ChildOnline).await;
+        if task.state == RebuildState::Completed {
+            
+            recovered_child.state = ChildState::Open;
 
-        // Actually we'd have to check if all other children are healthy
-        // and if not maybe we can start the other rebuild's?
-        self.set_state(NexusState::Online);
+            // child can now be part of the IO path
+            self.reconfigure(DREvent::ChildOnline).await;
+
+            // Actually we'd have to check if all other children are healthy
+            // and if not maybe we can start the other rebuild's?
+            self.set_state(NexusState::Online);
+        } else {
+            error!("Rebuild task for child {} failed with state {:?}", &task.destination, task.state);
+        }
+
+        Ok(())
     }
 
     pub async fn complete_rebuild(nexus: String, task: String) {
@@ -220,7 +243,9 @@ impl Nexus {
         );
 
         let nexus = nexus_lookup(&nexus).unwrap();
-        nexus.on_rebuild_complete(task).await;
+        if let Err(e) = nexus.on_rebuild_complete(task).await {
+            error!("{}", e);
+        }
     }
 
     /// Destroy child with given uri.
