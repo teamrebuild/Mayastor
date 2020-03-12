@@ -122,6 +122,8 @@ pub enum Error {
     ChildNotFound { child: String, name: String },
     #[snafu(display("Child {} of nexus {} is not closed", child, name))]
     ChildNotClosed { child: String, name: String },
+    #[snafu(display("Open Child of nexus {} not found", name))]
+    OpenChildNotFound { name: String },
     #[snafu(display("Failed to start rebuilding child {}", child))]
     StartRebuild {
         source: RebuildError,

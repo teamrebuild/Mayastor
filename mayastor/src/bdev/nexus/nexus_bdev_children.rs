@@ -172,24 +172,40 @@ impl Nexus {
         &mut self,
         destination: &str,
     ) -> Result<(), Error> {
-        self.rebuilds.push(
-            RebuildTask::new(
-                self.name.clone(),
-                self.children[0].name.clone(),
-                destination.to_string(),
-                self.data_ent_offset,
-                self.bdev.num_blocks() + self.data_ent_offset,
-                | nexus, task | {
-                    Reactors::current().send_future(async move {
-                        Nexus::complete_rebuild(nexus, task).await;
-                    });
-                }
-            )
-            .await.context(StartRebuild { child: destination.to_string()})?
-        );
+        trace!("{}: start rebuild request for {}", self.name, destination);
 
-        RebuildTask::start(self.name.to_string(), destination.to_string());
-        Ok(())
+        let source = match self.children.iter_mut().find(|c| c.state == ChildState::Open) {
+            Some(child) => child.name.clone(),
+            None => return Err(Error::OpenChildNotFound {
+                name: self.name.clone(),
+            }),
+        };
+
+        if let Some(dst_child) = self.children.iter_mut().find(|c| c.name == destination) {
+            self.rebuilds.push(
+                RebuildTask::new(
+                    self.name.clone(),
+                    source,
+                    destination.to_string(),
+                    self.data_ent_offset,
+                    self.bdev.num_blocks() + self.data_ent_offset,
+                    | nexus, task | {
+                        Reactors::current().send_future(async move {
+                            Nexus::complete_rebuild(nexus, task).await;
+                        });
+                    }
+                )
+                .await.context(StartRebuild { child: destination.to_string()})?
+            );
+            dst_child.repairing = true;
+            RebuildTask::start(self.name.to_string(), destination.to_string());
+            Ok(())
+        } else {
+            return Err(Error::ChildNotFound {
+                name: self.name.clone(),
+                child: destination.to_owned(),
+            });
+        }
     }
 
     /// On rebuild task completion it updates the child state and removes the rebuild task
