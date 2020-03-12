@@ -4,7 +4,6 @@ use crate::{
     },
     core::{Bdev, BdevHandle, Reactors, DmaBuf, DmaError, CoreError},
 };
-use std::convert::{TryFrom};
 use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
@@ -49,10 +48,10 @@ pub struct RebuildStats {}
 
 pub trait RebuildActions {
     fn stats(&self) -> Option<RebuildStats>;
-    fn start(&self) -> ();
-    fn stop(&self) -> ();
-    fn pause(&self) -> ();
-    fn resume(&self) -> ();
+    fn start(&mut self) -> ();
+    fn stop(&mut self) -> ();
+    fn pause(&mut self) -> ();
+    fn resume(&mut self) -> ();
 }
 
 // todo: address unwrap errors
@@ -106,7 +105,7 @@ impl RebuildTask {
     }
 
     /// rebuild a non-healthy child from a healthy child from start to end
-    pub async fn run(&mut self) {
+    async fn run(&mut self) {
         self.state = RebuildState::Running;
         self.current = self.start;
         self.stats();
@@ -158,10 +157,6 @@ impl RebuildTask {
         let complete = self.complete;
         complete(self.nexus_name.clone(), self.destination.clone());
     }
-
-    pub fn print_state(&self) {
-        info!("Rebuild {:?}", self.state);
-    }
 }
 
 impl RebuildActions for RebuildTask {
@@ -175,10 +170,18 @@ impl RebuildActions for RebuildTask {
         None
     }
 
-    fn start(&self) {}
-    fn stop(&self) {}
-    fn pause(&self) {}
-    fn resume(&self) {}
+    fn start(&mut self) {
+        todo!("start the rebuild task");
+    }
+    fn stop(&mut self) {
+        todo!("stop the rebuild task");
+    }
+    fn pause(&mut self) {
+        todo!("pause the rebuild task");
+    }
+    fn resume(&mut self) {
+        todo!("resume the rebuild task");
+    }
 }
 
 /// Helper Methods
@@ -189,8 +192,7 @@ impl RebuildTask {
     }
 
     fn get_bdev_handle(name: &str, read_write: bool) -> Result<BdevHandle,CoreError> {
-        let descriptor = Bdev::open_by_name(name, read_write).unwrap();
-        BdevHandle::try_from(descriptor)
+        BdevHandle::open(name, read_write, false)
     }
 
     pub fn start(nexus: String, target: String) {
