@@ -78,7 +78,7 @@ jobs:
     - name: Cargo fmt
       run: |
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo fmt --version'"
-        echo 'for d in */Cargo.toml; do dir=`dirname "$d"`; if [ ! -f "$dir"/.sgit ]; then echo "cargo fmt -p "$dir" -- --check"; cargo fmt -p "$dir" -- --check; fi; done' > fmt.sh
+        echo 'set -e; for d in */Cargo.toml; do dir=`dirname "$d"`; if [ ! -f "$dir"/.git ]; then echo "cargo fmt -p "$dir" -- --check"; cargo fmt -p "$dir" -- --check; fi; done' > fmt.sh
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'sh fmt.sh'"
 
     - name: Cargo Clippy

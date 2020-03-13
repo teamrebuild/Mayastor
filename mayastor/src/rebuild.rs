@@ -159,6 +159,7 @@ impl RebuildTask {
     }
 
     fn send_complete(&self) {
+        self.stats();
         let complete = self.complete;
         complete(self.nexus_name.clone(), self.destination.clone());
     }
