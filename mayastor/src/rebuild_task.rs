@@ -54,12 +54,9 @@ pub trait RebuildActions {
     fn resume(&mut self) -> ();
 }
 
-// todo: address unwrap errors
 impl RebuildTask {
-    // ideally we should move the nexus and bdev out of this and make
-    // the task as generic as possible ( a simple memcpy )
-    // then it should be simple to unittest
-    pub async fn new(
+
+    pub fn new(
         nexus_name: String,
         source: String,
         destination: String,
@@ -68,9 +65,9 @@ impl RebuildTask {
         complete: fn(String, String) -> (),
     ) -> Result<RebuildTask,RebuildError>
     {
-        let source_hdl = RebuildTask::get_bdev_handle(&source, false)
+        let source_hdl = BdevHandle::open(&source, false, false)
             .context(NoBdevHandle { bdev: &source })?;
-        let destination_hdl = RebuildTask::get_bdev_handle(&destination, true)
+        let destination_hdl = BdevHandle::open(&destination, true, false)
             .context(NoBdevHandle { bdev: &destination })?;
 
         if !RebuildTask::validate(&source_hdl.get_bdev(), &destination_hdl.get_bdev()) {
@@ -133,7 +130,7 @@ impl RebuildTask {
                 .dma_malloc(
                     (self.segment_size_blks * self.block_size) as usize,
                 )
-                .unwrap();
+                .context(NoCopyBuffer {})?;
 
             info!("Adjusting segment size to {}. offset: {}, start: {}, end: {}",
                 self.segment_size_blks, self.current, self.start, self.end);
@@ -157,6 +154,11 @@ impl RebuildTask {
         let complete = self.complete;
         complete(self.nexus_name.clone(), self.destination.clone());
     }
+
+    fn validate(source: &Bdev, destination: &Bdev) -> bool {
+        !(source.size_in_bytes() != destination.size_in_bytes()
+            || source.block_len() != destination.block_len())
+    }
 }
 
 impl RebuildActions for RebuildTask {
@@ -170,8 +172,30 @@ impl RebuildActions for RebuildTask {
         None
     }
 
+    // todo: ideally we'd want the nexus out of here but sadly rust does not yet 
+    // support async trait's
+    // the course of action might just be not using traits
     fn start(&mut self) {
-        todo!("start the rebuild task");
+        let nexus = self.nexus_name.clone();
+        let destination = self.destination.clone();
+        Reactors::current().send_future(async move {
+            
+            let nexus = match nexus_lookup(&nexus) {
+                Some(nexus) => nexus,
+                None => {
+                    return error!("Failed to find the nexus {}", nexus);
+                }
+            };
+
+            let task = match nexus.rebuilds.iter_mut().find(|t| t.destination == destination) {
+                Some(task) => task,
+                None => {
+                    return error!("Failed to find the rebuild task {} for nexus {}", destination, nexus.name);
+                }
+            };
+
+            task.run().await;
+        });
     }
     fn stop(&mut self) {
         todo!("stop the rebuild task");
@@ -181,25 +205,5 @@ impl RebuildActions for RebuildTask {
     }
     fn resume(&mut self) {
         todo!("resume the rebuild task");
-    }
-}
-
-/// Helper Methods
-impl RebuildTask {
-    fn validate(source: &Bdev, destination: &Bdev) -> bool {
-        !(source.size_in_bytes() != destination.size_in_bytes()
-            || source.block_len() != destination.block_len())
-    }
-
-    fn get_bdev_handle(name: &str, read_write: bool) -> Result<BdevHandle,CoreError> {
-        BdevHandle::open(name, read_write, false)
-    }
-
-    pub fn start(nexus: String, target: String) {
-        Reactors::current().send_future(async move {
-            let nexus = nexus_lookup(&nexus).unwrap();
-            let task = nexus.rebuilds.iter_mut().find(|t| t.destination == target).unwrap();
-            task.run().await;
-        });
     }
 }

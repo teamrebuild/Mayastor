@@ -44,7 +44,7 @@ use crate::{
     },
     core::{Bdev, Reactors},
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
-    rebuild_task::{RebuildTask, RebuildState},
+    rebuild_task::{RebuildTask, RebuildState, RebuildActions},
 };
 
 impl Nexus {
@@ -195,16 +195,28 @@ impl Nexus {
                         });
                     }
                 )
-                .await.context(StartRebuild { child: destination.to_string()})?
+                .context(StartRebuild { child: destination.to_string()})?
             );
+
             dst_child.repairing = true;
-            RebuildTask::start(self.name.to_string(), destination.to_string());
-            Ok(())
+
+            match self.rebuilds.iter_mut().find(|t| t.destination == destination.to_string()) {
+                Some(task) => {
+                    task.start();
+                    Ok(())
+                },
+                None => {
+                    Err(Error::CompleteRebuild {
+                        child: destination.to_string(),
+                        reason: "rebuild task not found in the nexus".to_string(),
+                    })
+                }
+            }
         } else {
-            return Err(Error::ChildNotFound {
+            Err(Error::ChildNotFound {
                 name: self.name.clone(),
                 child: destination.to_owned(),
-            });
+            })
         }
     }
 
