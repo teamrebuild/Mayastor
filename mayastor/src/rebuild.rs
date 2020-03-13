@@ -1,8 +1,6 @@
 use crate::{
-    bdev::nexus::{
-        nexus_bdev::{nexus_lookup},
-    },
-    core::{Bdev, BdevHandle, Reactors, DmaBuf, DmaError, CoreError},
+    bdev::nexus::nexus_bdev::nexus_lookup,
+    core::{Bdev, BdevHandle, CoreError, DmaBuf, DmaError, Reactors},
 };
 use snafu::{ResultExt, Snafu};
 
@@ -12,7 +10,7 @@ pub enum RebuildError {
     #[snafu(display("Failed to allocate buffer for the rebuild copy"))]
     NoCopyBuffer { source: DmaError },
     #[snafu(display("Failed to validate creation parameters"))]
-    InvalidParameters { },
+    InvalidParameters {},
     #[snafu(display("Failed to get a handle for bdev {}", bdev))]
     NoBdevHandle { source: CoreError, bdev: String },
     #[snafu(display("IO failed for bdev {}", bdev))]
@@ -48,14 +46,13 @@ pub struct RebuildStats {}
 
 pub trait RebuildActions {
     fn stats(&self) -> Option<RebuildStats>;
-    fn start(&mut self) -> ();
-    fn stop(&mut self) -> ();
-    fn pause(&mut self) -> ();
-    fn resume(&mut self) -> ();
+    fn start(&mut self);
+    fn stop(&mut self);
+    fn pause(&mut self);
+    fn resume(&mut self);
 }
 
 impl RebuildTask {
-
     pub fn new(
         nexus_name: String,
         source: String,
@@ -63,15 +60,21 @@ impl RebuildTask {
         start: u64,
         end: u64,
         complete: fn(String, String) -> (),
-    ) -> Result<RebuildTask,RebuildError>
-    {
-        let source_hdl = BdevHandle::open(&source, false, false)
-            .context(NoBdevHandle { bdev: &source })?;
+    ) -> Result<RebuildTask, RebuildError> {
+        let source_hdl =
+            BdevHandle::open(&source, false, false).context(NoBdevHandle {
+                bdev: &source,
+            })?;
         let destination_hdl = BdevHandle::open(&destination, true, false)
-            .context(NoBdevHandle { bdev: &destination })?;
+            .context(NoBdevHandle {
+                bdev: &destination,
+            })?;
 
-        if !RebuildTask::validate(&source_hdl.get_bdev(), &destination_hdl.get_bdev()) {
-            return Err(RebuildError::InvalidParameters {})
+        if !RebuildTask::validate(
+            &source_hdl.get_bdev(),
+            &destination_hdl.get_bdev(),
+        ) {
+            return Err(RebuildError::InvalidParameters {});
         };
 
         let segment_size = 10 * 1024;
@@ -80,10 +83,9 @@ impl RebuildTask {
         let segment_size_blks = (segment_size / block_size) as u64;
 
         let copy_buffer = source_hdl
-            .dma_malloc(
-                (segment_size_blks * block_size) as usize,
-            ).context(NoCopyBuffer {})?;
-        
+            .dma_malloc((segment_size_blks * block_size) as usize)
+            .context(NoCopyBuffer {})?;
+
         Ok(RebuildTask {
             nexus_name,
             source,
@@ -113,7 +115,8 @@ impl RebuildTask {
                 self.state = RebuildState::Failed;
                 self.send_complete();
             }
-            // TODO: check if the task received a "pause/stop" request, eg child is being removed
+            // TODO: check if the task received a "pause/stop" request, eg child
+            // is being removed
         }
 
         self.state = RebuildState::Completed;
@@ -121,30 +124,35 @@ impl RebuildTask {
     }
 
     /// copy one segment worth of data from source into destination
-    async fn copy_one(&mut self) -> Result<(),RebuildError> {
+    async fn copy_one(&mut self) -> Result<(), RebuildError> {
         // Adjust size of the last segment
         if (self.current + self.segment_size_blks) >= self.start + self.end {
             self.segment_size_blks = self.end - self.current;
 
-            self.copy_buffer = self.source_hdl
-                .dma_malloc(
-                    (self.segment_size_blks * self.block_size) as usize,
-                )
+            self.copy_buffer = self
+                .source_hdl
+                .dma_malloc((self.segment_size_blks * self.block_size) as usize)
                 .context(NoCopyBuffer {})?;
 
-            info!("Adjusting segment size to {}. offset: {}, start: {}, end: {}",
-                self.segment_size_blks, self.current, self.start, self.end);
+            info!(
+                "Adjusting segment size to {}. offset: {}, start: {}, end: {}",
+                self.segment_size_blks, self.current, self.start, self.end
+            );
         }
 
         self.source_hdl
             .read_at(self.current * self.block_size, &mut self.copy_buffer)
             .await
-            .context(IoError { bdev: &self.source })?;
+            .context(IoError {
+                bdev: &self.source,
+            })?;
 
         self.destination_hdl
             .write_at(self.current * self.block_size, &self.copy_buffer)
             .await
-            .context(IoError { bdev: &self.destination })?;
+            .context(IoError {
+                bdev: &self.destination,
+            })?;
 
         self.current += self.segment_size_blks;
         Ok(())
@@ -172,14 +180,13 @@ impl RebuildActions for RebuildTask {
         None
     }
 
-    // todo: ideally we'd want the nexus out of here but sadly rust does not yet 
+    // todo: ideally we'd want the nexus out of here but sadly rust does not yet
     // support async trait's
     // the course of action might just be not using traits
     fn start(&mut self) {
         let nexus = self.nexus_name.clone();
         let destination = self.destination.clone();
         Reactors::current().send_future(async move {
-            
             let nexus = match nexus_lookup(&nexus) {
                 Some(nexus) => nexus,
                 None => {
@@ -187,10 +194,17 @@ impl RebuildActions for RebuildTask {
                 }
             };
 
-            let task = match nexus.rebuilds.iter_mut().find(|t| t.destination == destination) {
+            let task = match nexus
+                .rebuilds
+                .iter_mut()
+                .find(|t| t.destination == destination)
+            {
                 Some(task) => task,
                 None => {
-                    return error!("Failed to find the rebuild task {} for nexus {}", destination, nexus.name);
+                    return error!(
+                        "Failed to find the rebuild task {} for nexus {}",
+                        destination, nexus.name
+                    );
                 }
             };
 

@@ -47,7 +47,7 @@ use crate::{
     ffihelper::errno_result_from_i32,
     jsonrpc::{Code, RpcErrorCode},
     nexus_uri::BdevCreateDestroy,
-    rebuild::{RebuildTask, RebuildError},
+    rebuild::{RebuildError, RebuildTask},
 };
 
 /// Common errors for nexus basic operations and child operations
@@ -125,15 +125,13 @@ pub enum Error {
     #[snafu(display("Open Child of nexus {} not found", name))]
     OpenChildNotFound { name: String },
     #[snafu(display("Failed to start rebuilding child {}", child))]
-    StartRebuild {
-        source: RebuildError,
-        child: String,
-    },
-    #[snafu(display("Failed to complete rebuild of child {}, reason: {}", child, reason))]
-    CompleteRebuild {
-        child: String,
-        reason: String,
-    },
+    StartRebuild { source: RebuildError, child: String },
+    #[snafu(display(
+        "Failed to complete rebuild of child {}, reason: {}",
+        child,
+        reason
+    ))]
+    CompleteRebuild { child: String, reason: String },
 }
 
 impl RpcErrorCode for Error {
