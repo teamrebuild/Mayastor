@@ -77,8 +77,10 @@ jobs:
 
     - name: Cargo fmt
       run: |
+        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo fmt --version'"
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo fmt --all -- --check'"
 
     - name: Cargo Clippy
       run: |
+        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo clippy --version'"
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo clippy --all --all-targets -- -D warnings'"
