@@ -44,7 +44,7 @@ use crate::{
     },
     core::{Bdev, Reactors},
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
-    rebuild_task::{RebuildTask, RebuildState, RebuildActions},
+    rebuild::{RebuildTask, RebuildState, RebuildActions},
 };
 
 impl Nexus {

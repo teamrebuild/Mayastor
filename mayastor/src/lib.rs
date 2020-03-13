@@ -18,7 +18,6 @@ pub mod logger;
 pub mod nexus_uri;
 pub mod pool;
 pub mod rebuild;
-pub mod rebuild_task;
 pub mod replica;
 pub mod target;
 #[macro_export]

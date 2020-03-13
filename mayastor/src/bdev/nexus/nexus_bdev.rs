@@ -47,7 +47,7 @@ use crate::{
     ffihelper::errno_result_from_i32,
     jsonrpc::{Code, RpcErrorCode},
     nexus_uri::BdevCreateDestroy,
-    rebuild_task::{RebuildTask, RebuildError},
+    rebuild::{RebuildTask, RebuildError},
 };
 
 /// Common errors for nexus basic operations and child operations
