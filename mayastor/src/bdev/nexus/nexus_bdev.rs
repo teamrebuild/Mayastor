@@ -124,15 +124,27 @@ pub enum Error {
     ChildNotClosed { child: String, name: String },
     #[snafu(display("Open Child of nexus {} not found", name))]
     OpenChildNotFound { name: String },
-    #[snafu(display("Failed to start rebuilding child {} of nexus {}", child, name))]
-    StartRebuild { source: RebuildError, child: String, name: String, },
+    #[snafu(display(
+        "Failed to start rebuilding child {} of nexus {}",
+        child,
+        name
+    ))]
+    StartRebuild {
+        source: RebuildError,
+        child: String,
+        name: String,
+    },
     #[snafu(display(
         "Failed to complete rebuild of child {} of nexus {}, reason: {}",
         child,
         name,
         reason,
     ))]
-    CompleteRebuild { child: String, name: String, reason: String, },
+    CompleteRebuild {
+        child: String,
+        name: String,
+        reason: String,
+    },
 }
 
 impl RpcErrorCode for Error {
