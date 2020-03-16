@@ -205,6 +205,7 @@ impl Nexus {
                 )
                 .context(StartRebuild {
                     child: destination.to_string(),
+                    name: self.name.clone(),
                 })?,
             );
 
@@ -221,6 +222,7 @@ impl Nexus {
                 }
                 None => Err(Error::CompleteRebuild {
                     child: destination.to_string(),
+                    name: self.name.clone(),
                     reason: "rebuild task not found in the nexus".to_string(),
                 }),
             }
@@ -241,6 +243,7 @@ impl Nexus {
                 None => {
                     return Err(Error::CompleteRebuild {
                         child: task,
+                        name: self.name.clone(),
                         reason: "rebuild task not found in the nexus"
                             .to_string(),
                     });
@@ -258,6 +261,7 @@ impl Nexus {
             None => {
                 return Err(Error::CompleteRebuild {
                     child: task.destination,
+                    name: self.name.clone(),
                     reason: "Missing destination child".to_string(),
                 });
             }
@@ -276,8 +280,8 @@ impl Nexus {
             self.set_state(NexusState::Online);
         } else {
             error!(
-                "Rebuild task for child {} failed with state {:?}",
-                &task.destination, task.state
+                "Rebuild task for child {} of nexus {} failed with state {:?}",
+                &task.destination, &self.name, task.state
             );
         }
 

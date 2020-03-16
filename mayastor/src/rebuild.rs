@@ -9,7 +9,7 @@ use snafu::{ResultExt, Snafu};
 pub enum RebuildError {
     #[snafu(display("Failed to allocate buffer for the rebuild copy"))]
     NoCopyBuffer { source: DmaError },
-    #[snafu(display("Failed to validate creation parameters"))]
+    #[snafu(display("Failed to validate rebuild task creation parameters"))]
     InvalidParameters {},
     #[snafu(display("Failed to get a handle for bdev {}", bdev))]
     NoBdevHandle { source: CoreError, bdev: String },
