@@ -8,7 +8,6 @@ on:
   pull_request:
     branches: [ master ]
 
-
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   tester:
@@ -52,7 +51,7 @@ jobs:
 
     - name: Cargo Test Mayastor
       run: |
-        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && RUST_BACKTRACE=1 cargo test -- --test-threads=1 && popd'"
+        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && RUST_BACKTRACE=full cargo test -- --test-threads=1 && popd'"
 
     - name: Js test_cli
       run: |
