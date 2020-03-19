@@ -27,7 +27,6 @@ jobs:
         cat /proc/version
         # Allocate 1024 2MiB hugepages
         echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
-        echo "Done Setup"
         
     - name: Env Setup
       run: |
@@ -69,6 +68,10 @@ jobs:
     - name: Js test_nexus
       run: |
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor-test && ./node_modules/mocha/bin/mocha test_nexus.js && popd'"
+        
+    - name: All
+      run: |
+        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run './test.sh'"
         
     - name: End
       run: |
