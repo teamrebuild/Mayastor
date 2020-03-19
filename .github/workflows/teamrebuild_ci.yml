@@ -23,10 +23,12 @@ jobs:
       run: |
         # Load required kernel modules
         sudo modprobe nbd; sudo modprobe nvme; sudo modprobe nvmet; sudo modprobe xfs
-        # Allocate 1024 2KiB hugepages
-        echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
+        pwd
         uname -a
         lsb_release -a
+        cat /proc/version
+        # Allocate 1024 2KiB hugepages
+        echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
         
     - name: Env Setup
       run: |
