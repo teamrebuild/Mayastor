@@ -113,14 +113,6 @@ pub fn mkfs(path: &str, fstype: &str) {
             panic!("unsupported fstype");
         }
     };
-    
-    let output = Command::new("which")
-        .args(&["mkfs.ext4"])
-        .output()
-        .expect("mkfs exec error");
-
-    io::stdout().write_all(&output.stderr).unwrap();
-    io::stdout().write_all(&output.stdout).unwrap();
 
     let output = Command::new(fs)
         .args(&args)
