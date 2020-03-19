@@ -339,8 +339,7 @@ describe('rebuild tests', function () {
             await addChild(rebuildArgs);
             await startRebuild(rebuildArgs);
             await stopRebuild(rebuildArgs);
-            await sleep(1000);
-
+            await sleep(1000); // Give time for the rebuild to stop
         });
 
         afterEach(async () => {
