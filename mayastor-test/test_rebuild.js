@@ -154,6 +154,22 @@ describe('rebuild tests', function () {
         });
     }
 
+    function numRebuilds(expected) {
+        client.ListNexus({}, (err, res) => {
+            if (err) return done(err);
+            assert.lengthOf(res.nexus_list, 1);
+
+            let nexus = res.nexus_list[0];
+            assert.equal(nexus.uuid, UUID);
+
+            assert.equal(nexus.rebuilds, expected);
+        });
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     const createNexus = args => {
         return new Promise((resolve, reject) => {
             client.createNexus(args, (err, data) => {
@@ -323,6 +339,8 @@ describe('rebuild tests', function () {
             await addChild(rebuildArgs);
             await startRebuild(rebuildArgs);
             await stopRebuild(rebuildArgs);
+            await sleep(1000);
+
         });
 
         afterEach(async () => {
@@ -352,6 +370,11 @@ describe('rebuild tests', function () {
                     assert.isDefined(err);
                 })
                 .catch(done);
+            done();
+        });
+
+        it('get number of rebuilds', done => {
+            numRebuilds('0');
             done();
         });
     });
