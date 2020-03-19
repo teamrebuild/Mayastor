@@ -51,7 +51,7 @@ jobs:
 
     - name: Cargo Test Mayastor
       run: |
-        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && cargo test -- --test-threads=1 && popd'"
+        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && RUST_BACKTRACE=1 cargo test -- --test-threads=1 && popd'"
 
     - name: Js test_cli
       run: |
@@ -68,10 +68,6 @@ jobs:
     - name: Js test_nexus
       run: |
         docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor-test && ./node_modules/mocha/bin/mocha test_nexus.js && popd'"
-        
-    - name: All
-      run: |
-        docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run './test.sh'"
         
     - name: End
       run: |
