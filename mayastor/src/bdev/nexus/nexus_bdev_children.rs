@@ -23,6 +23,7 @@
 //! channels for all children that are in the open state.
 
 use futures::future::join_all;
+use rpc::mayastor::RebuildStateReply;
 use snafu::ResultExt;
 
 use crate::{
@@ -230,6 +231,47 @@ impl Nexus {
             Err(Error::ChildNotFound {
                 name: self.name.clone(),
                 child: destination.to_owned(),
+            })
+        }
+    }
+
+    /// Return rebuild task associated with the destination
+    fn get_rebuild_task(
+        &mut self,
+        destination: &str,
+    ) -> Option<&mut RebuildTask> {
+        self.rebuilds
+            .iter_mut()
+            .find(|t| t.destination == destination)
+    }
+
+    pub async fn stop_rebuild(
+        &mut self,
+        destination: &str,
+    ) -> Result<(), Error> {
+        if let Some(r) = self.get_rebuild_task(destination) {
+            r.stop();
+            Ok(())
+        } else {
+            Err(Error::RebuildTaskNotFound {
+                child: destination.to_string(),
+                name: self.name.clone(),
+            })
+        }
+    }
+
+    pub async fn get_rebuild_state(
+        &mut self,
+        destination: &str,
+    ) -> Result<RebuildStateReply, Error> {
+        if let Some(r) = self.get_rebuild_task(destination) {
+            Ok(RebuildStateReply {
+                state: r.state.to_string(),
+            })
+        } else {
+            Err(Error::RebuildTaskNotFound {
+                child: destination.to_string(),
+                name: self.name.clone(),
             })
         }
     }

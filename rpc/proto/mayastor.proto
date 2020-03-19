@@ -194,6 +194,7 @@ message ChildNexusRequest {
 
 message RebuildStateRequest {
   string uuid = 1;  // uuid of the nexus
+  string uri = 2;   // uri of the child to be rebuilt
 }
 
 message RebuildStateReply {
@@ -201,6 +202,11 @@ message RebuildStateReply {
 }
 
 message StartRebuildRequest {
+  string uuid = 1;  // uuid of the nexus
+  string uri = 2;   // uri of the child to be rebuilt
+}
+
+message StopRebuildRequest {
   string uuid = 1;  // uuid of the nexus
   string uri = 2;   // uri of the child to be rebuilt
 }

@@ -3,6 +3,7 @@ use crate::{
     core::{Bdev, BdevHandle, CoreError, DmaBuf, DmaError, Reactors},
 };
 use snafu::{ResultExt, Snafu};
+use std::fmt;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub(crate)")]
@@ -21,8 +22,21 @@ pub enum RebuildError {
 pub enum RebuildState {
     Pending,
     Running,
+    Stopped,
     Failed,
     Completed,
+}
+
+impl fmt::Display for RebuildState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            RebuildState::Pending => write!(f, "Pending"),
+            RebuildState::Running => write!(f, "Running"),
+            RebuildState::Stopped => write!(f, "Stopped"),
+            RebuildState::Failed => write!(f, "Failed"),
+            RebuildState::Completed => write!(f, "Completed"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -117,6 +131,9 @@ impl RebuildTask {
             }
             // TODO: check if the task received a "pause/stop" request, eg child
             // is being removed
+            if self.state == RebuildState::Stopped {
+                return self.send_complete();
+            }
         }
 
         self.state = RebuildState::Completed;
@@ -168,6 +185,16 @@ impl RebuildTask {
         !(source.size_in_bytes() != destination.size_in_bytes()
             || source.block_len() != destination.block_len())
     }
+
+    /// Chaning the state should be performed on the same
+    /// reactor as the rebuild task
+    fn change_state(&mut self, new_state: RebuildState) {
+        info!(
+            "Rebuild task {}: changing state from {:?} to {:?}",
+            self.destination, self.state, new_state
+        );
+        self.state = new_state;
+    }
 }
 
 impl RebuildActions for RebuildTask {
@@ -212,12 +239,15 @@ impl RebuildActions for RebuildTask {
             task.run().await;
         });
     }
+
     fn stop(&mut self) {
-        todo!("stop the rebuild task");
+        self.change_state(RebuildState::Stopped);
     }
+
     fn pause(&mut self) {
         todo!("pause the rebuild task");
     }
+
     fn resume(&mut self) {
         todo!("resume the rebuild task");
     }
