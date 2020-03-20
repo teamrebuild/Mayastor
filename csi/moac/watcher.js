@@ -24,7 +24,7 @@ class Watcher extends EventEmitter {
   // Construct a watcher for resource.
   //   name: name of the watched resource
   //   getEp: k8s api endpoint with .get() method to get the objects
-  //   streamEp: k8s api endpoint with .getStream() method to obtain
+  //   streamEp: k8s api endpoint with .getObjectStream() method to obtain
   //             stream of watch events
   //   filterCb: converts k8s object to representation understood by the
   //             operator. Or returns null if object should be ignored.
@@ -38,7 +38,7 @@ class Watcher extends EventEmitter {
     this.noRestart = false; // do not renew watcher connection
     this.startResolve = null; // start promise in case of delayed start due
     // to an error
-    this.jsonStream = null; // non-null if watch connection is active
+    this.objectStream = null; // non-null if watch connection is active
     this.getInProg = false; // true if GET objects query is in progress
     this.reconnectDelay = 0; // Exponential backoff in case of api server
     // failures (in secs)
@@ -49,7 +49,7 @@ class Watcher extends EventEmitter {
   // Start asynchronously the watcher
   async start() {
     var self = this;
-    var stream = self.streamEp.getStream();
+    self.objectStream = await self.streamEp.getObjectStream();
 
     // TODO: missing upper bound on exponential backoff
     self.reconnectDelay = Math.min(
@@ -59,15 +59,11 @@ class Watcher extends EventEmitter {
     self.pendingEvents = [];
     assert(!self.getInProg);
     self.getInProg = true;
-    assert(!self.jsonStream);
-    self.jsonStream = new JSONStream();
     // start the stream of events before GET query so that we don't miss any
     // event while performing the GET.
-    stream.pipe(self.jsonStream);
-
-    self.jsonStream.on('data', ev => {
+    self.objectStream.on('data', ev => {
       log.trace(
-        `Event ${ev.type} in ${self.name} watcher: ` + JSON.stringify(ev.object)
+        `Event ${ev.type} in ${self.name} watcher: ${JSON.stringify(ev.object)}`
       );
 
       // if update of the node list is in progress, queue the event for later
@@ -80,14 +76,14 @@ class Watcher extends EventEmitter {
       self._processEvent(ev);
     });
 
-    self.jsonStream.on('error', err => {
+    self.objectStream.on('error', err => {
       log.error(`stream error in ${self.name} watcher: ${err}`);
     });
 
     // k8s api server disconnects watcher after a timeout. If that happens
     // reconnect and start again.
-    self.jsonStream.once('end', () => {
-      self.jsonStream = null;
+    self.objectStream.once('end', () => {
+      self.objectStream = null;
       if (self.getInProg) {
         // if watcher disconnected before we finished syncing, we have
         // to wait for the GET request to finish and then start over
@@ -114,12 +110,12 @@ class Watcher extends EventEmitter {
 
     // if watcher did end before we retrieved list of objects then start over
     self.getInProg = false;
-    if (!self.jsonStream) {
+    if (!self.objectStream) {
       self.scheduleRestart();
       return self.delayedStart();
     }
 
-    log.trace(`List of watched ${self.name} objects: ` + JSON.stringify(items));
+    log.trace(`List of watched ${self.name} objects: ${JSON.stringify(items)}`);
 
     // filter the obtained objects
     var objects = {};
@@ -229,7 +225,7 @@ class Watcher extends EventEmitter {
     // in progress. We will get called again when either of them terminates.
     // TODO: How to terminate the watcher connection?
     // Now we simply rely on server to close the conn after timeout
-    if (!this.jsonStream && !this.getInProg) {
+    if (!this.objectStream && !this.getInProg) {
       if (!this.noRestart) {
         setTimeout(this.start.bind(this), 1000 * this.reconnectDelay);
       }
@@ -271,77 +267,11 @@ class Watcher extends EventEmitter {
         this.emit('del', obj);
       }
     } else if (type === 'ERROR') {
-      log.error(`Error event in ${this.name} watcher: ` + JSON.stringify(ev));
+      log.error(`Error event in ${this.name} watcher: ${JSON.stringify(ev)}`);
     } else {
-      log.error(`Unknown event in ${this.name} watcher: ` + JSON.stringify(ev));
+      log.error(`Unknown event in ${this.name} watcher: ${JSON.stringify(ev)}`);
     }
   }
 }
 
-// Fake watcher which simulates the real one.
-// It can be used instead of real watcher in tests of other classes depending
-// on the watcher.
-class WatcherMock extends EventEmitter {
-  // Construct a watcher with initial set of objects passed in arg.
-  constructor(filterCb, objects) {
-    super();
-    this.filterCb = filterCb;
-    this.objects = {};
-    for (let i = 0; i < objects.length; i++) {
-      this.objects[objects[i].metadata.name] = objects[i];
-    }
-  }
-
-  injectObject(obj) {
-    this.objects[obj.metadata.name] = obj;
-  }
-
-  newObject(obj) {
-    this.objects[obj.metadata.name] = obj;
-    this.emit('new', this.filterCb(obj));
-  }
-
-  delObject(name) {
-    var obj = this.objects[name];
-    assert(obj);
-    delete this.objects[name];
-    this.emit('del', this.filterCb(obj));
-  }
-
-  modObject(obj) {
-    this.objects[obj.metadata.name] = obj;
-    this.emit('mod', this.filterCb(obj));
-  }
-
-  async start() {
-    var self = this;
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        for (let name in self.objects) {
-          // real objects coming from GET method also don't have kind and
-          // apiVersion attrs so strip these props to mimic the real case.
-          delete self.objects[name].kind;
-          delete self.objects[name].apiVersion;
-          self.emit('new', self.filterCb(self.objects[name]));
-        }
-        resolve();
-      }, 0);
-    });
-  }
-
-  async stop() {}
-
-  getRaw(name) {
-    return this.objects[name] || null;
-  }
-
-  list() {
-    var self = this;
-    return Object.values(this.objects).map(ent => self.filterCb(ent));
-  }
-}
-
-module.exports = {
-  Watcher,
-  WatcherMock,
-};
+module.exports = Watcher;

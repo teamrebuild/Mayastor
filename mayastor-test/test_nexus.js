@@ -122,7 +122,7 @@ function createGrpcClient(service) {
   );
 }
 
-describe('nexus', function() {
+describe('nexus', function () {
   var client;
   var nbd_device;
 
@@ -489,15 +489,12 @@ describe('nexus', function() {
   });
 
   it('should be the case that we do not have any dangling NBD devices left on the system', done => {
-    this.retries(10);
     exec('sleep 1; lsblk --json', (err, stdout, stderr) => {
       if (err) return done(err);
       let output = JSON.parse(stdout);
-      // We have to disable the dangling NBD test as it seems to fail all the time,
-      // suspect it's because we're running on quite an older kernel on azure...
-      //output.blockdevices.forEach(e => {
-      //  assert(e.name.indexOf('nbd') === -1, `NBD Device found:\n${stdout}`);
-      //});
+      output.blockdevices.forEach(e => {
+        assert(e.name.indexOf('nbd') === -1, `NBD Device found:\n${stdout}`);
+      });
       done();
     });
   });
