@@ -135,7 +135,7 @@ describe('rebuild tests', function() {
   };
 
   function checkState(childType, expectedState) {
-    client.ListNexus({}, (err, res) => {
+    client.ListNexus({}, (err, res, done) => {
       if (err) return done(err);
       assert.lengthOf(res.nexus_list, 1);
 
@@ -145,15 +145,15 @@ describe('rebuild tests', function() {
       if (childType == ObjectType.NEXUS) {
         assert.equal(nexus.state, expectedState);
       } else if (childType == ObjectType.SOURCE_CHILD) {
-        assert.equal(nexus['children'][0].state, expectedState);
+        assert.equal(nexus.children[0].state, expectedState);
       } else if (childType == ObjectType.DESTINATION_CHILD) {
-        assert.equal(nexus['children'][1].state, expectedState);
+        assert.equal(nexus.children[1].state, expectedState);
       }
     });
   }
 
   function numRebuilds(expected) {
-    client.ListNexus({}, (err, res) => {
+    client.ListNexus({}, (err, res, done) => {
       if (err) return done(err);
       assert.lengthOf(res.nexus_list, 1);
 
@@ -263,13 +263,12 @@ describe('rebuild tests', function() {
         next => {
           createNexus(nexusArgs)
             .then(() => {
-              done();
+              next();
             })
             .catch(err => {
               assert(err);
             })
             .catch(done);
-          next;
         },
       ],
       done
@@ -290,13 +289,12 @@ describe('rebuild tests', function() {
         next => {
           destroyNexus({ uuid: UUID })
             .then(() => {
-              done();
+              next();
             })
             .catch(err => {
               done();
             })
             .catch(done);
-          next;
         },
       ],
       err => {
