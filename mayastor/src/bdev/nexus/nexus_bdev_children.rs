@@ -256,12 +256,10 @@ impl Nexus {
             .find(|t| t.destination == destination)
         {
             Some(rt) => Ok(rt),
-            None => {
-                Err(Error::RebuildTaskNotFound {
-                    child: destination.to_string(),
-                    name: self.name.clone(),
-                })
-            }
+            None => Err(Error::RebuildTaskNotFound {
+                child: destination.to_string(),
+                name: self.name.clone(),
+            }),
         }
     }
 
