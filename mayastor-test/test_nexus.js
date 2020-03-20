@@ -122,7 +122,7 @@ function createGrpcClient(service) {
   );
 }
 
-describe('nexus', function () {
+describe('nexus', function() {
   var client;
   var nbd_device;
 
