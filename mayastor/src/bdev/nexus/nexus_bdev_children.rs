@@ -235,45 +235,46 @@ impl Nexus {
         }
     }
 
-    /// Return rebuild task associated with the destination
+    /// Return rebuild task associated with the destination.
+    /// Return error if no rebuild task associated with destination.
     fn get_rebuild_task(
         &mut self,
         destination: &str,
-    ) -> Option<&mut RebuildTask> {
-        self.rebuilds
+    ) -> Result<&mut RebuildTask, Error> {
+        match self
+            .rebuilds
             .iter_mut()
             .find(|t| t.destination == destination)
+        {
+            Some(rt) => return Ok(rt),
+            None => {
+                return Err(Error::RebuildTaskNotFound {
+                    child: destination.to_string(),
+                    name: self.name.clone(),
+                })
+            }
+        }
     }
 
+    /// Stop a rebuild task
     pub async fn stop_rebuild(
         &mut self,
         destination: &str,
     ) -> Result<(), Error> {
-        if let Some(r) = self.get_rebuild_task(destination) {
-            r.stop();
-            Ok(())
-        } else {
-            Err(Error::RebuildTaskNotFound {
-                child: destination.to_string(),
-                name: self.name.clone(),
-            })
-        }
+        let rt = self.get_rebuild_task(destination)?;
+        rt.stop();
+        Ok(())
     }
 
+    /// Return the state of a rebuild task
     pub async fn get_rebuild_state(
         &mut self,
         destination: &str,
     ) -> Result<RebuildStateReply, Error> {
-        if let Some(r) = self.get_rebuild_task(destination) {
-            Ok(RebuildStateReply {
-                state: r.state.to_string(),
-            })
-        } else {
-            Err(Error::RebuildTaskNotFound {
-                child: destination.to_string(),
-                name: self.name.clone(),
-            })
-        }
+        let rt = self.get_rebuild_task(destination)?;
+        Ok(RebuildStateReply {
+            state: rt.state.to_string(),
+        })
     }
 
     /// On rebuild task completion it updates the child state and removes the
