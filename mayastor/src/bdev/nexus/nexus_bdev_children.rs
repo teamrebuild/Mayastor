@@ -255,9 +255,9 @@ impl Nexus {
             .iter_mut()
             .find(|t| t.destination == destination)
         {
-            Some(rt) => return Ok(rt),
+            Some(rt) => Ok(rt),
             None => {
-                return Err(Error::RebuildTaskNotFound {
+                Err(Error::RebuildTaskNotFound {
                     child: destination.to_string(),
                     name: self.name.clone(),
                 })
