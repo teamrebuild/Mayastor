@@ -125,7 +125,7 @@ function createGrpcClient(service) {
   );
 }
 
-describe('rebuild tests', function() {
+describe('rebuild tests', function () {
   var client;
 
   var ObjectType = {
@@ -152,7 +152,7 @@ describe('rebuild tests', function() {
     });
   }
 
-  function numRebuilds(expected) {
+  function checkNumRebuilds(expected) {
     client.ListNexus({}, (err, res, done) => {
       if (err) return done(err);
       assert.lengthOf(res.nexus_list, 1);
@@ -306,7 +306,7 @@ describe('rebuild tests', function() {
     );
   });
 
-  describe('running rebuild', function() {
+  describe('running rebuild', function () {
     beforeEach(async () => {
       await addChild(rebuildArgs);
       await startRebuild(rebuildArgs);
@@ -330,11 +330,12 @@ describe('rebuild tests', function() {
     });
   });
 
-  describe('stopping rebuild', function() {
+  describe('stopping rebuild', function () {
     beforeEach(async () => {
       await addChild(rebuildArgs);
       await startRebuild(rebuildArgs);
       await stopRebuild(rebuildArgs);
+      // TODO: Check for rebuild stop rather than sleeping
       await sleep(1000); // Give time for the rebuild to stop
     });
 
@@ -369,7 +370,7 @@ describe('rebuild tests', function() {
     });
 
     it('get number of rebuilds', done => {
-      numRebuilds('0');
+      checkNumRebuilds('0');
       done();
     });
   });

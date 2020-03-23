@@ -31,11 +31,11 @@ pub enum RebuildState {
 impl fmt::Display for RebuildState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            RebuildState::Pending => write!(f, "Pending"),
-            RebuildState::Running => write!(f, "Running"),
-            RebuildState::Stopped => write!(f, "Stopped"),
-            RebuildState::Failed => write!(f, "Failed"),
-            RebuildState::Completed => write!(f, "Completed"),
+            RebuildState::Pending => write!(f, "pending"),
+            RebuildState::Running => write!(f, "running"),
+            RebuildState::Stopped => write!(f, "stopped"),
+            RebuildState::Failed => write!(f, "failed"),
+            RebuildState::Completed => write!(f, "completed"),
         }
     }
 }
@@ -191,7 +191,7 @@ impl RebuildTask {
             || source.block_len() != destination.block_len())
     }
 
-    /// Chaning the state should be performed on the same
+    /// Changing the state should be performed on the same
     /// reactor as the rebuild task
     fn change_state(&mut self, new_state: RebuildState) {
         info!(

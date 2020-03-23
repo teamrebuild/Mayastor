@@ -146,7 +146,7 @@ message Nexus {
   // Path to device file for the volume (missing if not published).
   // Missing property and empty string are treated the same.
   string device_path = 5;
-  uint64 rebuilds = 6;
+  uint64 rebuilds = 6;         // total number of rebuild tasks
 }
 
 message ListNexusReply {
