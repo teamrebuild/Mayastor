@@ -125,7 +125,7 @@ function createGrpcClient(service) {
   );
 }
 
-describe('rebuild tests', function () {
+describe('rebuild tests', function() {
   var client;
 
   var ObjectType = {
@@ -306,7 +306,7 @@ describe('rebuild tests', function () {
     );
   });
 
-  describe('running rebuild', function () {
+  describe('running rebuild', function() {
     beforeEach(async () => {
       await addChild(rebuildArgs);
       await startRebuild(rebuildArgs);
@@ -330,7 +330,7 @@ describe('rebuild tests', function () {
     });
   });
 
-  describe('stopping rebuild', function () {
+  describe('stopping rebuild', function() {
     beforeEach(async () => {
       await addChild(rebuildArgs);
       await startRebuild(rebuildArgs);
