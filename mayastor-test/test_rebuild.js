@@ -331,7 +331,7 @@ describe('rebuild tests', function() {
       checkState(ObjectType.DESTINATION_CHILD, 'faulted');
     });
   });
-  
+
   describe('stopping rebuild', function() {
     beforeEach(async () => {
       await addChild(rebuildArgs);

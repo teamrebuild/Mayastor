@@ -30,11 +30,6 @@ jobs:
 
       - name: Env Setup
         run: |
-          # We'll be running as root within docker so we don't need sudo
-          sed -i 's/^runner/#runner/1' ./mayastor/.cargo/config
-          # Fetch spdk-sys
-          git submodule update --init
-
           # Launch the nix container as a daemon
           docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor teamrebuild/ci:latest tail -f /dev/null
 
