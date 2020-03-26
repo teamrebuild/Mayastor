@@ -3,10 +3,10 @@ use crossbeam::channel::{unbounded, Receiver, Sender};
 use once_cell::sync::OnceCell;
 use snafu::{ResultExt, Snafu};
 use spdk_sys::spdk_get_thread;
-use std::{cell::UnsafeCell, fmt};
+use std::{cell::UnsafeCell, collections::HashMap, fmt};
 
 pub struct RebuildInstances {
-    inner: UnsafeCell<Vec<RebuildTask>>,
+    inner: UnsafeCell<HashMap<String, RebuildTask>>,
 }
 
 unsafe impl Sync for RebuildInstances {}
@@ -99,10 +99,7 @@ impl RebuildTask {
 
     /// Lookup a rebuild task by its destination uri and return it
     pub fn lookup(name: &str) -> Result<&mut Self, RebuildError> {
-        if let Some(task) = Self::get_instances()
-            .iter_mut()
-            .find(|n| n.destination == name)
-        {
+        if let Some(task) = Self::get_instances().get_mut(name) {
             Ok(task)
         } else {
             Err(RebuildError::TaskNotFound {
@@ -113,11 +110,8 @@ impl RebuildTask {
 
     /// Lookup a rebuild task by its destination uri then remove and return it
     pub fn remove(name: &str) -> Result<Self, RebuildError> {
-        match Self::get_instances()
-            .iter()
-            .position(|t| t.destination == name)
-        {
-            Some(task_index) => Ok(Self::get_instances().remove(task_index)),
+        match Self::get_instances().remove(name) {
+            Some(task) => Ok(task),
             None => Err(RebuildError::TaskNotFound {
                 task: name.to_owned(),
             }),
@@ -133,15 +127,12 @@ impl RebuildTask {
     fn store(self: Self) -> Result<(), RebuildError> {
         let rebuild_list = Self::get_instances();
 
-        if rebuild_list
-            .iter()
-            .any(|n| n.destination == self.destination)
-        {
+        if rebuild_list.contains_key(&self.destination) {
             Err(RebuildError::TaskAlreadyExists {
                 task: self.destination,
             })
         } else {
-            rebuild_list.push(self);
+            let _ = rebuild_list.insert(self.destination.clone(), self);
             Ok(())
         }
     }
@@ -290,7 +281,7 @@ impl RebuildTask {
 
     /// Get the rebuild task instances container, we ensure that this can only
     /// ever be called on a properly allocated thread
-    fn get_instances() -> &'static mut Vec<Self> {
+    fn get_instances() -> &'static mut HashMap<String, Self> {
         let thread = unsafe { spdk_get_thread() };
         if thread.is_null() {
             panic!("not called from SPDK thread")
@@ -300,7 +291,7 @@ impl RebuildTask {
 
         let global_instances =
             REBUILD_INSTANCES.get_or_init(|| RebuildInstances {
-                inner: UnsafeCell::new(Vec::new()),
+                inner: UnsafeCell::new(HashMap::new()),
             });
 
         unsafe { &mut *global_instances.inner.get() }
