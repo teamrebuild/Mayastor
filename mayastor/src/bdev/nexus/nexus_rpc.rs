@@ -25,6 +25,7 @@ use crate::{
         nexus_bdev::{nexus_create, Error, Nexus},
     },
     jsonrpc::jsonrpc_register,
+    rebuild::RebuildTask,
 };
 
 /// Convert the UUID to a nexus name in the form of "nexus-{uuid}".
@@ -84,7 +85,7 @@ pub(crate) fn register_rpc_methods() {
                         })
                         .collect::<Vec<_>>(),
                     device_path: nexus.get_share_path().unwrap_or_default(),
-                    rebuilds: nexus.rebuilds.len() as u64,
+                    rebuilds: RebuildTask::count() as u64,
                 })
                 .collect::<Vec<_>>(),
         })

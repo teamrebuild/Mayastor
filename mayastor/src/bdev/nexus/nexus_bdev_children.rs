@@ -38,6 +38,7 @@ use crate::{
             NexusState,
             OpenChild,
             ReadLabel,
+            RemoveRebuildTask,
             StartRebuild,
         },
         nexus_channel::DREvent,
@@ -203,39 +204,26 @@ impl Nexus {
         if let Some(dst_child) =
             self.children.iter_mut().find(|c| c.name == destination)
         {
-            self.rebuilds.push(
-                RebuildTask::new(
-                    self.name.clone(),
-                    source,
-                    destination.to_string(),
-                    self.data_ent_offset,
-                    self.bdev.num_blocks() + self.data_ent_offset,
-                    |nexus, task| {
-                        Reactors::current().send_future(async move {
-                            Nexus::complete_rebuild(nexus, task).await;
-                        });
-                    },
-                )
-                .context(StartRebuild {
-                    child: destination.to_string(),
-                    name: self.name.clone(),
-                })?,
-            );
+            let task = RebuildTask::create(
+                &self.name.clone(),
+                &source,
+                destination,
+                self.data_ent_offset,
+                self.bdev.num_blocks() + self.data_ent_offset,
+                |nexus, task| {
+                    Reactors::current().send_future(async move {
+                        Nexus::complete_rebuild(nexus, task).await;
+                    });
+                },
+            )
+            .context(StartRebuild {
+                child: destination.to_string(),
+                name: self.name.clone(),
+            })?;
 
             dst_child.repairing = true;
 
-            match self
-                .rebuilds
-                .iter_mut()
-                .find(|t| t.destination == destination)
-            {
-                Some(task) => Ok(task.start()),
-                None => Err(Error::CompleteRebuild {
-                    child: destination.to_string(),
-                    name: self.name.clone(),
-                    reason: "rebuild task not found in the nexus".to_string(),
-                }),
-            }
+            Ok(task.start())
         } else {
             Err(Error::ChildNotFound {
                 name: self.name.clone(),
@@ -246,21 +234,20 @@ impl Nexus {
 
     /// Return rebuild task associated with the destination.
     /// Return error if no rebuild task associated with destination.
-    fn get_rebuild_task(
+    fn get_rebuild_task<'b>(
         &mut self,
-        destination: &str,
-    ) -> Result<&mut RebuildTask, Error> {
-        match self
-            .rebuilds
-            .iter_mut()
-            .find(|t| t.destination == destination)
-        {
-            Some(rt) => Ok(rt),
-            None => Err(Error::RebuildTaskNotFound {
-                child: destination.to_string(),
-                name: self.name.clone(),
-            }),
+        destination: &'b str,
+    ) -> Result<&'b mut RebuildTask, Error> {
+        if let Ok(task) = RebuildTask::lookup(destination) {
+            if task.nexus == self.name {
+                return Ok(task);
+            }
         }
+
+        Err(Error::RebuildTaskNotFound {
+            child: destination.to_owned(),
+            name: self.name.clone(),
+        })
     }
 
     /// Stop a rebuild task
@@ -284,38 +271,23 @@ impl Nexus {
         })
     }
 
+    fn get_child(&mut self, name: &str) -> Result<&mut NexusChild, Error> {
+        match self.children.iter_mut().find(|c| c.name == name) {
+            Some(child) => Ok(child),
+            None => Err(Error::ChildNotFound {
+                child: name.to_owned(),
+                name: self.name.clone(),
+            }),
+        }
+    }
+
     /// On rebuild task completion it updates the child state and removes the
     /// rebuild task in case of failure the child is left in a Faulted State
-    async fn on_rebuild_complete(&mut self, task: String) -> Result<(), Error> {
-        let task_index =
-            match self.rebuilds.iter().position(|t| t.destination == task) {
-                Some(task_index) => task_index,
-                None => {
-                    return Err(Error::CompleteRebuild {
-                        child: task,
-                        name: self.name.clone(),
-                        reason: "rebuild task not found in the nexus"
-                            .to_string(),
-                    });
-                }
-            };
-
-        let task = self.rebuilds.remove(task_index);
-
-        let recovered_child = match self
-            .children
-            .iter_mut()
-            .find(|c| c.name == task.destination)
-        {
-            Some(child) => child,
-            None => {
-                return Err(Error::CompleteRebuild {
-                    child: task.destination,
-                    name: self.name.clone(),
-                    reason: "Missing destination child".to_string(),
-                });
-            }
-        };
+    async fn on_rebuild_complete_task(
+        &mut self,
+        task: &RebuildTask,
+    ) -> Result<(), Error> {
+        let recovered_child = self.get_child(&task.destination)?;
 
         recovered_child.repairing = false;
 
@@ -338,15 +310,29 @@ impl Nexus {
         Ok(())
     }
 
+    /// On rebuild task completion it updates the child state and removes the
+    /// rebuild task in case of failure the child is left in a Faulted State
+    async fn on_rebuild_complete(&mut self, task: String) -> Result<(), Error> {
+        let task = RebuildTask::remove(&task).context(RemoveRebuildTask {
+            child: task.clone(),
+            name: self.name.clone(),
+        })?;
+
+        Ok(self.on_rebuild_complete_task(&task).await?)
+    }
+
     pub async fn complete_rebuild(nexus: String, task: String) {
         info!(
             "nexus {} received complete_rebuild from task {}",
             nexus, task
         );
 
-        let nexus = nexus_lookup(&nexus).unwrap();
-        if let Err(e) = nexus.on_rebuild_complete(task).await {
-            error!("{}", e);
+        if let Some(nexus) = nexus_lookup(&nexus) {
+            if let Err(e) = nexus.on_rebuild_complete(task).await {
+                error!("Failed to complete the rebuild with error {}", e);
+            }
+        } else {
+            error!("Failed to find nexus {} for rebuild task {}", nexus, task);
         }
     }
 

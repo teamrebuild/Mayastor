@@ -1,10 +1,16 @@
-use crate::{
-    bdev::nexus::nexus_bdev::nexus_lookup,
-    core::{Bdev, BdevHandle, CoreError, DmaBuf, DmaError, Reactors},
-};
+use crate::core::{Bdev, BdevHandle, CoreError, DmaBuf, DmaError, Reactors};
 use crossbeam::channel::{unbounded, Receiver, Sender};
+use once_cell::sync::OnceCell;
 use snafu::{ResultExt, Snafu};
-use std::fmt;
+use spdk_sys::spdk_get_thread;
+use std::{cell::UnsafeCell, fmt};
+
+pub struct RebuildInstances {
+    inner: UnsafeCell<Vec<RebuildTask>>,
+}
+
+unsafe impl Sync for RebuildInstances {}
+unsafe impl Send for RebuildInstances {}
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub(crate)")]
@@ -17,6 +23,12 @@ pub enum RebuildError {
     NoBdevHandle { source: CoreError, bdev: String },
     #[snafu(display("IO failed for bdev {}", bdev))]
     IoError { source: CoreError, bdev: String },
+    #[snafu(display("Failed to find rebuild task {}", task))]
+    TaskNotFound { task: String },
+    #[snafu(display("Task {} already exists", task))]
+    TaskAlreadyExists { task: String },
+    #[snafu(display("Missing rebuild destination {}", task))]
+    MissingDestination { task: String },
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -40,9 +52,9 @@ impl fmt::Display for RebuildState {
     }
 }
 
-#[derive(Debug)]
+//#[derive(Debug)]
 pub struct RebuildTask {
-    nexus_name: String,
+    pub nexus: String,
     source: String,
     source_hdl: BdevHandle,
     pub destination: String,
@@ -68,28 +80,46 @@ pub trait RebuildActions {
     fn resume(&mut self);
 }
 
+impl fmt::Debug for RebuildTask {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Hi")
+    }
+}
+
 impl RebuildTask {
-    pub fn new(
-        nexus_name: String,
-        source: String,
-        destination: String,
+    pub fn create<'b>(
+        nexus: &str,
+        source: &str,
+        destination: &'b str,
         start: u64,
         end: u64,
         complete_fn: fn(String, String) -> (),
-    ) -> Result<RebuildTask, RebuildError> {
+    ) -> Result<&'b mut Self, RebuildError> {
+        Self::new(nexus, source, destination, start, end, complete_fn)?
+            .store()?;
+
+        Ok(Self::lookup(destination)?)
+    }
+
+    pub fn new(
+        nexus: &str,
+        source: &str,
+        destination: &str,
+        start: u64,
+        end: u64,
+        complete_fn: fn(String, String) -> (),
+    ) -> Result<Self, RebuildError> {
         let source_hdl =
-            BdevHandle::open(&source, false, false).context(NoBdevHandle {
-                bdev: &source,
+            BdevHandle::open(source, false, false).context(NoBdevHandle {
+                bdev: source,
             })?;
-        let destination_hdl = BdevHandle::open(&destination, true, false)
+        let destination_hdl = BdevHandle::open(destination, true, false)
             .context(NoBdevHandle {
-                bdev: &destination,
+                bdev: destination,
             })?;
 
-        if !RebuildTask::validate(
-            &source_hdl.get_bdev(),
-            &destination_hdl.get_bdev(),
-        ) {
+        if !Self::validate(&source_hdl.get_bdev(), &destination_hdl.get_bdev())
+        {
             return Err(RebuildError::InvalidParameters {});
         };
 
@@ -102,8 +132,12 @@ impl RebuildTask {
             .dma_malloc((segment_size_blks * block_size) as usize)
             .context(NoCopyBuffer {})?;
 
-        Ok(RebuildTask {
-            nexus_name,
+        let (source, destination) =
+            (source.to_string(), destination.to_string());
+        let nexus = nexus.to_string();
+
+        Ok(Self {
+            nexus,
             source,
             source_hdl,
             destination,
@@ -118,6 +152,53 @@ impl RebuildTask {
             complete_chan: unbounded::<RebuildState>(),
             state: RebuildState::Pending,
         })
+    }
+
+    /// Lookup a task by its name destination uri
+    pub fn lookup(name: &str) -> Result<&mut Self, RebuildError> {
+        if let Some(task) = Self::get_instances()
+            .iter_mut()
+            .find(|n| n.destination == name)
+        {
+            Ok(task)
+        } else {
+            Err(RebuildError::TaskNotFound {
+                task: name.to_owned(),
+            })
+        }
+    }
+
+    pub fn count() -> usize {
+        Self::get_instances().len()
+    }
+
+    /// Lookup and remove task by its destination uri
+    pub fn remove(name: &str) -> Result<Self, RebuildError> {
+        match Self::get_instances()
+            .iter()
+            .position(|t| t.destination == name)
+        {
+            Some(task_index) => Ok(Self::get_instances().remove(task_index)),
+            None => Err(RebuildError::TaskNotFound {
+                task: name.to_owned(),
+            }),
+        }
+    }
+
+    fn store(self: Self) -> Result<(), RebuildError> {
+        let rebuild_list = Self::get_instances();
+
+        if rebuild_list
+            .iter()
+            .any(|n| n.destination == self.destination)
+        {
+            Err(RebuildError::TaskAlreadyExists {
+                task: self.destination,
+            })
+        } else {
+            rebuild_list.push(self);
+            Ok(())
+        }
     }
 
     /// rebuild a non-healthy child from a healthy child from start to end
@@ -178,11 +259,11 @@ impl RebuildTask {
         Ok(())
     }
 
-    fn send_complete(&self) {
+    fn send_complete(&mut self) {
         self.stats();
-        (self.complete_fn)(self.nexus_name.clone(), self.destination.clone());
+        (self.complete_fn)(self.nexus.clone(), self.destination.clone());
         if let Err(e) = self.complete_chan.0.send(self.state) {
-            error!("Rebuild Task {} of nexus {} failed to send complete via the unbound channel with err {}", self.destination, self.nexus_name, e);
+            error!("Rebuild Task {} of nexus {} failed to send complete via the unbound channel with err {}", self.destination, self.nexus, e);
         }
     }
 
@@ -199,6 +280,24 @@ impl RebuildTask {
             self.destination, self.state, new_state
         );
         self.state = new_state;
+    }
+
+    /// return instances, we ensure that this can only ever be called on a
+    /// properly allocated thread
+    pub fn get_instances() -> &'static mut Vec<Self> {
+        let thread = unsafe { spdk_get_thread() };
+        if thread.is_null() {
+            panic!("not called from SPDK thread")
+        }
+
+        static REBUILD_INSTANCES: OnceCell<RebuildInstances> = OnceCell::new();
+
+        let global_instances =
+            REBUILD_INSTANCES.get_or_init(|| RebuildInstances {
+                inner: UnsafeCell::new(Vec::new()),
+            });
+
+        unsafe { &mut *global_instances.inner.get() }
     }
 }
 
@@ -217,28 +316,16 @@ impl RebuildActions for RebuildTask {
     // support async trait's
     // the course of action might just be not using traits
     fn start(&mut self) -> Receiver<RebuildState> {
-        let nexus = self.nexus_name.clone();
         let destination = self.destination.clone();
         let complete_receiver = self.complete_chan.clone().1;
 
         Reactors::current().send_future(async move {
-            let nexus = match nexus_lookup(&nexus) {
-                Some(nexus) => nexus,
-                None => {
-                    return error!("Failed to find the nexus {}", nexus);
-                }
-            };
-
-            let task = match nexus
-                .rebuilds
-                .iter_mut()
-                .find(|t| t.destination == destination)
-            {
-                Some(task) => task,
-                None => {
+            let task = match RebuildTask::lookup(&destination) {
+                Ok(task) => task,
+                Err(_) => {
                     return error!(
-                        "Failed to find the rebuild task {} for nexus {}",
-                        destination, nexus.name
+                        "Failed to find the rebuild task {}",
+                        destination
                     );
                 }
             };
