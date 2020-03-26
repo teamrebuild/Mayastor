@@ -52,7 +52,7 @@ impl fmt::Display for RebuildState {
     }
 }
 
-//#[derive(Debug)]
+#[derive(Debug)]
 pub struct RebuildTask {
     pub nexus: String,
     source: String,
@@ -80,13 +80,9 @@ pub trait RebuildActions {
     fn resume(&mut self);
 }
 
-impl fmt::Debug for RebuildTask {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Hi")
-    }
-}
-
 impl RebuildTask {
+    /// Returns a newly created RebuildTask which is already stored in the
+    /// rebuild list
     pub fn create<'b>(
         nexus: &str,
         source: &str,
@@ -101,7 +97,57 @@ impl RebuildTask {
         Ok(Self::lookup(destination)?)
     }
 
-    pub fn new(
+    /// Lookup a rebuild task by its destination uri and return it
+    pub fn lookup(name: &str) -> Result<&mut Self, RebuildError> {
+        if let Some(task) = Self::get_instances()
+            .iter_mut()
+            .find(|n| n.destination == name)
+        {
+            Ok(task)
+        } else {
+            Err(RebuildError::TaskNotFound {
+                task: name.to_owned(),
+            })
+        }
+    }
+
+    /// Lookup a rebuild task by its destination uri then remove and return it
+    pub fn remove(name: &str) -> Result<Self, RebuildError> {
+        match Self::get_instances()
+            .iter()
+            .position(|t| t.destination == name)
+        {
+            Some(task_index) => Ok(Self::get_instances().remove(task_index)),
+            None => Err(RebuildError::TaskNotFound {
+                task: name.to_owned(),
+            }),
+        }
+    }
+
+    /// Number of rebuild task instances
+    pub fn count() -> usize {
+        Self::get_instances().len()
+    }
+
+    /// Stores a rebuild task in the rebuild task list
+    fn store(self: Self) -> Result<(), RebuildError> {
+        let rebuild_list = Self::get_instances();
+
+        if rebuild_list
+            .iter()
+            .any(|n| n.destination == self.destination)
+        {
+            Err(RebuildError::TaskAlreadyExists {
+                task: self.destination,
+            })
+        } else {
+            rebuild_list.push(self);
+            Ok(())
+        }
+    }
+
+    /// Returns a new rebuild task based on the parameters
+    fn new(
         nexus: &str,
         source: &str,
         destination: &str,
@@ -132,9 +178,11 @@ impl RebuildTask {
             .dma_malloc((segment_size_blks * block_size) as usize)
             .context(NoCopyBuffer {})?;
 
-        let (source, destination) =
-            (source.to_string(), destination.to_string());
-        let nexus = nexus.to_string();
+        let (source, destination, nexus) = (
+            source.to_string(),
+            destination.to_string(),
+            nexus.to_string(),
+        );
 
         Ok(Self {
             nexus,
@@ -154,54 +202,7 @@ impl RebuildTask {
         })
     }
 
-    /// Lookup a task by its name destination uri
-    pub fn lookup(name: &str) -> Result<&mut Self, RebuildError> {
-        if let Some(task) = Self::get_instances()
-            .iter_mut()
-            .find(|n| n.destination == name)
-        {
-            Ok(task)
-        } else {
-            Err(RebuildError::TaskNotFound {
-                task: name.to_owned(),
-            })
-        }
-    }
-
-    pub fn count() -> usize {
-        Self::get_instances().len()
-    }
-
-    /// Lookup and remove task by its destination uri
-    pub fn remove(name: &str) -> Result<Self, RebuildError> {
-        match Self::get_instances()
-            .iter()
-            .position(|t| t.destination == name)
-        {
-            Some(task_index) => Ok(Self::get_instances().remove(task_index)),
-            None => Err(RebuildError::TaskNotFound {
-                task: name.to_owned(),
-            }),
-        }
-    }
-
-    fn store(self: Self) -> Result<(), RebuildError> {
-        let rebuild_list = Self::get_instances();
-
-        if rebuild_list
-            .iter()
-            .any(|n| n.destination == self.destination)
-        {
-            Err(RebuildError::TaskAlreadyExists {
-                task: self.destination,
-            })
-        } else {
-            rebuild_list.push(self);
-            Ok(())
-        }
-    }
-
-    /// rebuild a non-healthy child from a healthy child from start to end
+    /// Rebuilds a non-healthy child from a healthy child from start to end
     async fn run(&mut self) {
         self.state = RebuildState::Running;
         self.current = self.start;
@@ -224,7 +225,7 @@ impl RebuildTask {
         self.send_complete();
     }
 
-    /// copy one segment worth of data from source into destination
+    /// Copies one segment worth of data from source into destination
     async fn copy_one(&mut self) -> Result<(), RebuildError> {
         // Adjust size of the last segment
         if (self.current + self.segment_size_blks) >= self.start + self.end {
@@ -259,14 +260,19 @@ impl RebuildTask {
         Ok(())
     }
 
+    /// Calls the task's registered complete fn callback and complete sender
+    /// channel
     fn send_complete(&mut self) {
         self.stats();
+        // should this return a status before we complete the sender channel?
         (self.complete_fn)(self.nexus.clone(), self.destination.clone());
         if let Err(e) = self.complete_chan.0.send(self.state) {
             error!("Rebuild Task {} of nexus {} failed to send complete via the unbound channel with err {}", self.destination, self.nexus, e);
         }
     }
 
+    /// Check if the source and destination block devices are compatible for
+    /// rebuild
     fn validate(source: &Bdev, destination: &Bdev) -> bool {
         !(source.size_in_bytes() != destination.size_in_bytes()
             || source.block_len() != destination.block_len())
@@ -282,9 +288,9 @@ impl RebuildTask {
         self.state = new_state;
     }
 
-    /// return instances, we ensure that this can only ever be called on a
-    /// properly allocated thread
-    pub fn get_instances() -> &'static mut Vec<Self> {
+    /// Get the rebuild task instances container, we ensure that this can only
+    /// ever be called on a properly allocated thread
+    fn get_instances() -> &'static mut Vec<Self> {
         let thread = unsafe { spdk_get_thread() };
         if thread.is_null() {
             panic!("not called from SPDK thread")
