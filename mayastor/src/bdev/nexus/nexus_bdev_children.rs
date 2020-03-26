@@ -483,10 +483,10 @@ impl Nexus {
 
     /// Return rebuild task associated with the child name.
     /// Return error if no rebuild task associated with it.
-    fn get_rebuild_task<'b>(
+    fn get_rebuild_task<'a>(
         &mut self,
-        name: &'b str,
-    ) -> Result<&'b mut RebuildTask, Error> {
+        name: &'a str,
+    ) -> Result<&'a mut RebuildTask, Error> {
         if let Ok(task) = RebuildTask::lookup(name) {
             if task.nexus == self.name {
                 return Ok(task);

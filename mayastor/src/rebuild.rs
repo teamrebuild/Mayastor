@@ -83,14 +83,14 @@ pub trait RebuildActions {
 impl RebuildTask {
     /// Returns a newly created RebuildTask which is already stored in the
     /// rebuild list
-    pub fn create<'b>(
+    pub fn create<'a>(
         nexus: &str,
         source: &str,
-        destination: &'b str,
+        destination: &'a str,
         start: u64,
         end: u64,
         complete_fn: fn(String, String) -> (),
-    ) -> Result<&'b mut Self, RebuildError> {
+    ) -> Result<&'a mut Self, RebuildError> {
         Self::new(nexus, source, destination, start, end, complete_fn)?
             .store()?;
 
