@@ -122,8 +122,8 @@ pub enum Error {
     ChildNotFound { child: String, name: String },
     #[snafu(display("Child {} of nexus {} is not closed", child, name))]
     ChildNotClosed { child: String, name: String },
-    #[snafu(display("Open Child of nexus {} not found", name))]
-    OpenChildNotFound { name: String },
+    #[snafu(display("Suitable rebuild source for nexus {} not found", name))]
+    NoRebuildSource { name: String },
     #[snafu(display(
         "Failed to start rebuilding child {} of nexus {}",
         child,
@@ -141,7 +141,7 @@ pub enum Error {
     ))]
     RebuildTaskNotFound { child: String, name: String },
     #[snafu(display(
-        "Failed remove rebuild task {} of nexus {}",
+        "Failed to remove rebuild task {} of nexus {}",
         child,
         name,
     ))]

@@ -404,11 +404,8 @@ impl Nexus {
 
     /// Starts a rebuild task in the background
     pub async fn start_rebuild_rpc(&mut self, name: &str) -> Result<(), Error> {
-        if let Err(e) = self.start_rebuild(name).await {
-            Err(e)
-        } else {
-            Ok(())
-        }
+        self.start_rebuild(name).await?;
+        Ok(())
     }
 
     /// Starts a rebuild task and returns a receiver channel
@@ -419,48 +416,42 @@ impl Nexus {
     ) -> Result<Receiver<RebuildState>, Error> {
         trace!("{}: start rebuild request for {}", self.name, name);
 
-        let source = match self
-            .children
-            .iter_mut()
-            .find(|c| c.state == ChildState::Open)
-        {
-            Some(child) => child.name.clone(),
-            None => {
-                return Err(Error::OpenChildNotFound {
+        let src_child_name =
+            match self.children.iter().find(|c| c.state == ChildState::Open) {
+                Some(child) => Ok(child.name.clone()),
+                None => Err(Error::NoRebuildSource {
                     name: self.name.clone(),
-                })
-            }
-        };
+                }),
+            }?;
 
-        if let Some(dst_child) =
-            self.children.iter_mut().find(|c| c.name == name)
+        let dst_child = match self.children.iter_mut().find(|c| c.name == name)
         {
-            let task = RebuildTask::create(
-                &self.name.clone(),
-                &source,
-                name,
-                self.data_ent_offset,
-                self.bdev.num_blocks() + self.data_ent_offset,
-                |nexus, task| {
-                    Reactors::current().send_future(async move {
-                        Nexus::complete_rebuild(nexus, task).await;
-                    });
-                },
-            )
-            .context(StartRebuild {
-                child: name.to_string(),
+            Some(c) => Ok(c),
+            None => Err(Error::NoRebuildSource {
                 name: self.name.clone(),
-            })?;
+            }),
+        }?;
 
-            dst_child.repairing = true;
+        let task = RebuildTask::create(
+            &self.name,
+            &src_child_name,
+            &dst_child.name,
+            self.data_ent_offset,
+            self.bdev.num_blocks() + self.data_ent_offset,
+            |nexus, task| {
+                Reactors::current().send_future(async move {
+                    Nexus::complete_rebuild(nexus, task).await;
+                });
+            },
+        )
+        .context(StartRebuild {
+            child: name.to_string(),
+            name: self.name.clone(),
+        })?;
 
-            Ok(task.start())
-        } else {
-            Err(Error::ChildNotFound {
-                name: self.name.clone(),
-                child: name.to_owned(),
-            })
-        }
+        dst_child.repairing = true;
+
+        Ok(task.start())
     }
 
     /// Stop the child's rebuild task in the background
@@ -512,8 +503,8 @@ impl Nexus {
         }
     }
 
-    /// On rebuild task completion it updates the child state and removes the
-    /// rebuild task in case of failure the child is left in a Faulted State
+    /// On rebuild task completion it updates the child and the nexus
+    /// based on the rebuild task's final state
     async fn on_rebuild_complete_task(
         &mut self,
         task: &RebuildTask,
@@ -541,8 +532,6 @@ impl Nexus {
         Ok(())
     }
 
-    /// On rebuild task completion it updates the child state and removes the
-    /// rebuild task in case of failure the child is left in a Faulted State
     async fn on_rebuild_complete(&mut self, task: String) -> Result<(), Error> {
         let task = RebuildTask::remove(&task).context(RemoveRebuildTask {
             child: task.clone(),
