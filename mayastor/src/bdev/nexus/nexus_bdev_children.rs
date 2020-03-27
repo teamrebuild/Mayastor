@@ -516,12 +516,12 @@ impl Nexus {
         if task.state == RebuildState::Completed {
             recovered_child.state = ChildState::Open;
 
-            // child can now be part of the IO path
-            self.reconfigure(DREvent::ChildOnline).await;
-
             // Actually we'd have to check if all other children are healthy
             // and if not maybe we can start the other rebuild's?
             self.set_state(NexusState::Online);
+
+            // child can now be part of the IO path
+            self.reconfigure(DREvent::ChildOnline).await;
         } else {
             error!(
                 "Rebuild task for child {} of nexus {} failed with state {:?}",
