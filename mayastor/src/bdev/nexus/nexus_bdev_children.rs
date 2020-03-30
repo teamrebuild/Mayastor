@@ -38,6 +38,7 @@ use crate::{
             NexusState,
             OpenChild,
             ReadLabel,
+            RebuildOperationError,
             StartRebuild,
         },
         nexus_channel::DREvent,
@@ -269,13 +270,7 @@ impl Nexus {
         destination: &str,
     ) -> Result<(), Error> {
         let rt = self.get_rebuild_task(destination)?;
-        match rt.stop() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(Error::RebuildOperationError {
-                operation: "Stop".to_string(),
-                state: rt.state.to_string(),
-            }),
-        }
+        rt.stop().context(RebuildOperationError {})
     }
 
     /// Pause a rebuild task
@@ -284,13 +279,7 @@ impl Nexus {
         destination: &str,
     ) -> Result<(), Error> {
         let rt = self.get_rebuild_task(destination)?;
-        match rt.pause() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(Error::RebuildOperationError {
-                operation: "Pause".to_string(),
-                state: rt.state.to_string(),
-            }),
-        }
+        rt.pause().context(RebuildOperationError {})
     }
 
     /// Resume a rebuild task
@@ -299,13 +288,7 @@ impl Nexus {
         destination: &str,
     ) -> Result<(), Error> {
         let rt = self.get_rebuild_task(destination)?;
-        match rt.resume() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(Error::RebuildOperationError {
-                operation: "Resume".to_string(),
-                state: rt.state.to_string(),
-            }),
-        }
+        rt.resume().context(RebuildOperationError {})
     }
 
     /// Return the state of a rebuild task

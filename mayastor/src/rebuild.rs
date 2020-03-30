@@ -17,8 +17,12 @@ pub enum RebuildError {
     NoBdevHandle { source: CoreError, bdev: String },
     #[snafu(display("IO failed for bdev {}", bdev))]
     IoError { source: CoreError, bdev: String },
-    #[snafu(display("Operation failed."))]
-    OpError {},
+    #[snafu(display(
+        "{} operation failed because current rebuild state is {}.",
+        operation,
+        state,
+    ))]
+    OpError { operation: String, state: String },
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -264,7 +268,10 @@ impl RebuildActions for RebuildTask {
                 self.change_state(RebuildState::Paused);
                 Ok(())
             }
-            _ => Err(RebuildError::OpError {}),
+            _ => Err(RebuildError::OpError {
+                operation: "Pause".to_string(),
+                state: self.state.to_string(),
+            }),
         }
     }
 
@@ -277,7 +284,10 @@ impl RebuildActions for RebuildTask {
                 self.start();
                 Ok(())
             }
-            _ => Err(RebuildError::OpError {}),
+            _ => Err(RebuildError::OpError {
+                operation: "Resume".to_string(),
+                state: self.state.to_string(),
+            }),
         }
     }
 }
