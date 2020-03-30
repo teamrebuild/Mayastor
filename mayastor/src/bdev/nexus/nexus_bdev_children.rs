@@ -269,8 +269,43 @@ impl Nexus {
         destination: &str,
     ) -> Result<(), Error> {
         let rt = self.get_rebuild_task(destination)?;
-        rt.stop();
-        Ok(())
+        match rt.stop() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(Error::RebuildOperationError {
+                operation: "Stop".to_string(),
+                state: rt.state.to_string(),
+            }),
+        }
+    }
+
+    /// Pause a rebuild task
+    pub async fn pause_rebuild(
+        &mut self,
+        destination: &str,
+    ) -> Result<(), Error> {
+        let rt = self.get_rebuild_task(destination)?;
+        match rt.pause() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(Error::RebuildOperationError {
+                operation: "Pause".to_string(),
+                state: rt.state.to_string(),
+            }),
+        }
+    }
+
+    /// Resume a rebuild task
+    pub async fn resume_rebuild(
+        &mut self,
+        destination: &str,
+    ) -> Result<(), Error> {
+        let rt = self.get_rebuild_task(destination)?;
+        match rt.resume() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(Error::RebuildOperationError {
+                operation: "Resume".to_string(),
+                state: rt.state.to_string(),
+            }),
+        }
     }
 
     /// Return the state of a rebuild task
@@ -299,6 +334,18 @@ impl Nexus {
                     });
                 }
             };
+
+        if let Some(t) = self.rebuilds.get(task_index) {
+            if t.state == RebuildState::Paused {
+                // Leave all states as they are
+                return Ok(());
+            }
+        } else {
+            return Err(Error::RebuildTaskNotFound {
+                child: task,
+                name: self.name.clone(),
+            });
+        }
 
         let task = self.rebuilds.remove(task_index);
 

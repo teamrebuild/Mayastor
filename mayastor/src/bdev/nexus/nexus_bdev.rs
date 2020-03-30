@@ -151,6 +151,12 @@ pub enum Error {
         name,
     ))]
     RebuildTaskNotFound { child: String, name: String },
+    #[snafu(display(
+        "{} operation failed because current rebuild state is {}.",
+        operation,
+        state,
+    ))]
+    RebuildOperationError { operation: String, state: String },
 }
 
 impl RpcErrorCode for Error {

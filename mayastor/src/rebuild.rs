@@ -17,6 +17,8 @@ pub enum RebuildError {
     NoBdevHandle { source: CoreError, bdev: String },
     #[snafu(display("IO failed for bdev {}", bdev))]
     IoError { source: CoreError, bdev: String },
+    #[snafu(display("Operation failed."))]
+    OpError {},
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -24,6 +26,7 @@ pub enum RebuildState {
     Pending,
     Running,
     Stopped,
+    Paused,
     Failed,
     Completed,
 }
@@ -34,6 +37,7 @@ impl fmt::Display for RebuildState {
             RebuildState::Pending => write!(f, "pending"),
             RebuildState::Running => write!(f, "running"),
             RebuildState::Stopped => write!(f, "stopped"),
+            RebuildState::Paused => write!(f, "paused"),
             RebuildState::Failed => write!(f, "failed"),
             RebuildState::Completed => write!(f, "completed"),
         }
@@ -63,9 +67,9 @@ pub struct RebuildStats {}
 pub trait RebuildActions {
     fn stats(&self) -> Option<RebuildStats>;
     fn start(&mut self) -> Receiver<RebuildState>;
-    fn stop(&mut self);
-    fn pause(&mut self);
-    fn resume(&mut self);
+    fn stop(&mut self) -> Result<(), RebuildError>;
+    fn pause(&mut self) -> Result<(), RebuildError>;
+    fn resume(&mut self) -> Result<(), RebuildError>;
 }
 
 impl RebuildTask {
@@ -122,24 +126,25 @@ impl RebuildTask {
 
     /// rebuild a non-healthy child from a healthy child from start to end
     async fn run(&mut self) {
-        self.state = RebuildState::Running;
+        self.change_state(RebuildState::Running);
         self.current = self.start;
         self.stats();
 
         while self.current < self.end {
             if let Err(e) = self.copy_one().await {
                 error!("Failed to copy segment {}", e);
-                self.state = RebuildState::Failed;
+                self.change_state(RebuildState::Failed);
                 self.send_complete();
             }
-            // TODO: check if the task received a "pause" request, eg suspend
-            // rebuild
-            if self.state == RebuildState::Stopped {
+
+            if self.state == RebuildState::Stopped
+                || self.state == RebuildState::Paused
+            {
                 return self.send_complete();
             }
         }
 
-        self.state = RebuildState::Completed;
+        self.change_state(RebuildState::Completed);
         self.send_complete();
     }
 
@@ -247,13 +252,32 @@ impl RebuildActions for RebuildTask {
         });
         complete_receiver
     }
-    fn stop(&mut self) {
+
+    fn stop(&mut self) -> Result<(), RebuildError> {
         self.change_state(RebuildState::Stopped);
+        Ok(())
     }
-    fn pause(&mut self) {
-        todo!("pause the rebuild task");
+
+    fn pause(&mut self) -> Result<(), RebuildError> {
+        match self.state {
+            RebuildState::Running => {
+                self.change_state(RebuildState::Paused);
+                Ok(())
+            }
+            _ => Err(RebuildError::OpError {}),
+        }
     }
-    fn resume(&mut self) {
-        todo!("resume the rebuild task");
+
+    fn resume(&mut self) -> Result<(), RebuildError> {
+        match self.state {
+            RebuildState::Paused => {
+                // Kick off the rebuild task again.
+                // The rebuild state doesn't need to be changed because
+                // this is done by the run function
+                self.start();
+                Ok(())
+            }
+            _ => Err(RebuildError::OpError {}),
+        }
     }
 }
