@@ -30,11 +30,14 @@ jobs:
 
       - name: Env Setup
         run: |
+          # We'll be running as root within docker so we don't need sudo
+          sed -i 's/^runner/#runner/1' ./mayastor/.cargo/config
+
           # Launch the nix container as a daemon
           docker run -d --name "nix" --privileged --rm -v /dev:/dev:rw -v /dev/shm:/dev/shm:rw -v /dev/hugepages:/dev/hugepages:rw --network host -v $PWD:/MayaStor teamrebuild/ci:latest tail -f /dev/null
 
           # Setup cached cargo and node modules
-          docker exec "nix" /bin/sh -c "mv /usr/src/app/mayastor-test/node_modules/ /MayaStor/mayastor-test"
+          docker exec "nix" /bin/sh -c "mv /usr/src/app/mayastor-test/node_modules/ /MayaStor/mayastor-test; mkdir /MayaStor/.cargo 2>/dev/null || true; cat config >> /MayaStor/.cargo/config; cat config >> /MayaStor/mayastor/.cargo/config"
 
       - name: Build
         run: |
@@ -77,9 +80,6 @@ jobs:
 
       - name: Nix Setup
         run: |
-          # Fetch spdk-sys
-          git submodule update --init
-
           # Launch the nix container as a daemon
           docker run -d --name "nix" --rm -v $PWD:/MayaStor teamrebuild/ci:latest tail -f /dev/null
 
