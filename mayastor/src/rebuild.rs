@@ -80,7 +80,7 @@ pub struct RebuildTask {
 
 pub struct RebuildStats {}
 
-pub trait RebuildActions {
+pub trait RebuildOperations {
     fn stats(&self) -> Option<RebuildStats>;
     fn start(&mut self) -> Receiver<RebuildState>;
     fn stop(&mut self) -> Result<(), RebuildError>;
@@ -212,6 +212,7 @@ impl RebuildTask {
                 error!("Failed to copy segment {}", e);
                 self.change_state(RebuildState::Failed);
                 self.send_complete();
+                return;
             }
 
             if self.state == RebuildState::Stopped
@@ -307,7 +308,7 @@ impl RebuildTask {
     }
 }
 
-impl RebuildActions for RebuildTask {
+impl RebuildOperations for RebuildTask {
     fn stats(&self) -> Option<RebuildStats> {
         info!(
             "State: {:?}, Src: {}, Dst: {}, start: {}, end: {}, current: {}, block: {}",

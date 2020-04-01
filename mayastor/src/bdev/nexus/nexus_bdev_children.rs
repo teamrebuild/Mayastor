@@ -39,6 +39,7 @@ use crate::{
             OpenChild,
             ReadLabel,
             RebuildOperationError,
+            RebuildTaskNotFound,
             RemoveRebuildTask,
             StartRebuild,
         },
@@ -48,7 +49,7 @@ use crate::{
     },
     core::{Bdev, Reactors},
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
-    rebuild::{RebuildActions, RebuildState, RebuildTask},
+    rebuild::{RebuildOperations, RebuildState, RebuildTask},
 };
 
 impl Nexus {
@@ -490,16 +491,13 @@ impl Nexus {
         &mut self,
         name: &'a str,
     ) -> Result<&'a mut RebuildTask, Error> {
-        if let Ok(task) = RebuildTask::lookup(name) {
-            if task.nexus == self.name {
-                return Ok(task);
-            }
-        }
-
-        Err(Error::RebuildTaskNotFound {
+        let task = RebuildTask::lookup(&name).context(RebuildTaskNotFound {
             child: name.to_owned(),
             name: self.name.clone(),
-        })
+        })?;
+
+        assert!(task.nexus == self.name);
+        Ok(task)
     }
 
     fn get_child_by_name(
@@ -545,19 +543,14 @@ impl Nexus {
     }
 
     async fn on_rebuild_complete(&mut self, task: String) -> Result<(), Error> {
-        match RebuildTask::lookup(&task) {
-            Ok(t) => {
-                if t.state == RebuildState::Paused {
-                    // Leave all states as they are
-                    return Ok(());
-                }
-            }
-            Err(_) => {
-                return Err(Error::RebuildTaskNotFound {
-                    child: task,
-                    name: self.name.clone(),
-                })
-            }
+        let t = RebuildTask::lookup(&task).context(RebuildTaskNotFound {
+            child: task.clone(),
+            name: self.name.clone(),
+        })?;
+
+        if t.state == RebuildState::Paused {
+            // Leave all states as they are
+            return Ok(());
         }
 
         let task = RebuildTask::remove(&task).context(RemoveRebuildTask {
