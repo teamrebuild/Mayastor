@@ -239,9 +239,9 @@ impl Nexus {
                     child: name.to_owned(),
                     name: self.name.clone(),
                 })?;
-                self.reconfigure(DREvent::ChildOnline).await;
-                //TODO should be rebuilding
-                Ok(self.set_state(NexusState::Degraded))
+                let nexus_state = self.set_state(NexusState::Degraded);
+                self.start_rebuild(name).await?;
+                Ok(nexus_state)
             }
         } else {
             Err(Error::ChildNotFound {
