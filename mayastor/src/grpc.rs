@@ -13,7 +13,7 @@ use crate::{
     core::{Cores, Reactors},
     pool,
     replica,
-    rebuild::RebuildTask
+    rebuild::RebuildJob
 };
 
 #[derive(Debug)]
@@ -164,7 +164,7 @@ impl Mayastor for MayastorGrpc {
                         state: c.state.to_string(),
                     })
                     .collect::<Vec<_>>(),
-                rebuilds: RebuildTask::count() as u64,
+                rebuilds: RebuildJob::count() as u64,
             })
             .collect::<Vec<_>>();
 
