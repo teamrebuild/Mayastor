@@ -307,8 +307,21 @@ impl service::mayastor_server::Mayastor for MayastorService {
     ) -> Result<Response<Null>, Status> {
         let msg = request.into_inner();
         trace!("{:?}", msg);
-        jsonrpc::call::<_, ()>(&self.socket, "offline_child", Some(msg))
-            .await?;
+        match msg.action {
+            0 => {
+                jsonrpc::call::<_, ()>(
+                    &self.socket,
+                    "offline_child",
+                    Some(msg),
+                )
+                .await?;
+            }
+            1 => {
+                jsonrpc::call::<_, ()>(&self.socket, "online_child", Some(msg))
+                    .await?;
+            }
+            _ => (),
+        }
         Ok(Response::new(Null {}))
     }
 

@@ -215,6 +215,7 @@ impl Nexus {
             });
         }
 
+        self.stop_rebuild(name).await?;
         self.reconfigure(DREvent::ChildOffline).await;
         Ok(self.set_state(NexusState::Degraded))
     }
@@ -239,6 +240,7 @@ impl Nexus {
                     child: name.to_owned(),
                     name: self.name.clone(),
                 })?;
+                child.state = ChildState::Faulted;
                 let nexus_state = self.set_state(NexusState::Degraded);
                 self.start_rebuild(name).await?;
                 Ok(nexus_state)
@@ -458,8 +460,12 @@ impl Nexus {
 
     /// Stop a rebuild task in the background
     pub async fn stop_rebuild(&mut self, name: &str) -> Result<(), Error> {
-        let rt = self.get_rebuild_task(name)?;
-        rt.stop().context(RebuildOperationError {})
+        match self.get_rebuild_task(name) {
+            Ok(rt) => rt.stop().context(RebuildOperationError {}),
+            // If a rebuild task is not found return ok
+            // as we were just going to remove it anyway.
+            Err(_) => Ok(()),
+        }
     }
 
     /// Pause a rebuild task in the background
