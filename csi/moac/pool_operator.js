@@ -97,11 +97,11 @@ class PoolOperator {
     // event handlers to follow changes to them.
     await self.watcher.start();
     self._bindWatcher(self.watcher);
-    self.watcher.list().forEach(r => (self.resource[r.name] = r));
+    self.watcher.list().forEach((r) => (self.resource[r.name] = r));
 
     // this will start async processing of node and pool events
     self.eventStream = new EventStream({ registry: self.registry });
-    self.eventStream.on('data', async ev => {
+    self.eventStream.on('data', async (ev) => {
       if (ev.kind == 'pool') {
         await self.workq.push(ev, self._onPoolEvent.bind(self));
       } else if (ev.kind == 'node' && ev.eventType == 'sync') {
@@ -146,7 +146,7 @@ class PoolOperator {
     log.debug(`Syncing pool records for node "${nodeName}"`);
 
     let resources = Object.values(this.resource).filter(
-      ent => ent.node == nodeName
+      (ent) => ent.node == nodeName
     );
     for (let i = 0; i < resources.length; i++) {
       await this._createPool(resources[i]);
@@ -168,13 +168,13 @@ class PoolOperator {
   //
   _bindWatcher(watcher) {
     var self = this;
-    watcher.on('new', resource => {
+    watcher.on('new', (resource) => {
       self.workq.push(resource, self._createPool.bind(self));
     });
-    watcher.on('mod', resource => {
+    watcher.on('mod', (resource) => {
       self.workq.push(resource, self._modifyPool.bind(self));
     });
-    watcher.on('del', resource => {
+    watcher.on('del', (resource) => {
       self.workq.push(resource.name, self._destroyPool.bind(self));
     });
   }
@@ -202,12 +202,12 @@ class PoolOperator {
 
     if (
       !resource.disks.every(
-        ent => ent.startsWith('/dev/') && ent.indexOf('..') == -1
+        (ent) => ent.startsWith('/dev/') && ent.indexOf('..') == -1
       )
     ) {
       let msg = 'Disk must be absolute path beginning with /dev';
       log.error(`Cannot create pool "${name}": ${msg}`);
-      await this._updateResourceProps(name, 'PENDING', msg);
+      await this._updateResourceProps(name, 'pending', msg);
       return;
     }
 
@@ -215,7 +215,7 @@ class PoolOperator {
     if (!node) {
       let msg = `mayastor does not run on node "${nodeName}"`;
       log.error(`Cannot create pool "${name}": ${msg}`);
-      await this._updateResourceProps(name, 'PENDING', msg);
+      await this._updateResourceProps(name, 'pending', msg);
       return;
     }
     if (!node.isSynced()) {
@@ -227,14 +227,14 @@ class PoolOperator {
 
     // We will update the pool status once the pool is created, but
     // that can take a time, so set reasonable default now.
-    await this._updateResourceProps(name, 'PENDING', 'Creating the pool');
+    await this._updateResourceProps(name, 'pending', 'Creating the pool');
 
     try {
       // pool resource props will be updated when "new" pool event is emitted
       pool = await node.createPool(name, resource.disks);
     } catch (err) {
       log.error(`Failed to create pool "${name}": ${err}`);
-      await this._updateResourceProps(name, 'PENDING', err.toString());
+      await this._updateResourceProps(name, 'pending', err.toString());
       return;
     }
   }
@@ -303,11 +303,16 @@ class PoolOperator {
       log.warn(`State of unknown pool "${name}" has changed`);
       return;
     }
+    var state = pool.state.replace(/^POOL_/, '').toLowerCase();
+    var reason = '';
+    if (state == 'offline') {
+      reason = `mayastor does not run on the node "${pool.node}"`;
+    }
 
     await this._updateResourceProps(
       name,
-      pool.state,
-      pool.reason,
+      state,
+      reason,
       pool.capacity,
       pool.used
     );

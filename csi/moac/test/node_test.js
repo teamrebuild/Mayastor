@@ -9,18 +9,19 @@ const Nexus = require('../nexus');
 const Pool = require('../pool');
 const Replica = require('../replica');
 const { MayastorServer } = require('./mayastor_mock');
+const enums = require('./grpc_enums');
 
 const UUID = 'ba5e39e9-0c0e-4973-8a3a-0dccada09cbb';
 const EGRESS_ENDPOINT = '127.0.0.1:12345';
 
-module.exports = function() {
+module.exports = function () {
   var srv;
   var node;
   var pools = [
     {
       name: 'pool',
       disks: ['/dev/sdb', '/dev/sdc'],
-      state: 0,
+      state: enums.POOL_ONLINE,
       capacity: 100,
       used: 14,
     },
@@ -55,7 +56,7 @@ module.exports = function() {
     expect(node.toString()).to.equal('node-name');
   });
 
-  describe('node events', function() {
+  describe('node events', function () {
     this.timeout(500);
 
     // start a fake mayastor server
@@ -78,7 +79,7 @@ module.exports = function() {
         }
       });
 
-      it('should sync the state with storage node and emit event', done => {
+      it('should sync the state with storage node and emit event', (done) => {
         // the first sync takes sometimes >20ms so don't set the interval too low
         let syncInterval = 100;
         let syncCount = 0;
@@ -92,19 +93,19 @@ module.exports = function() {
           syncBadLimit: 0,
         });
 
-        node.on('pool', ev => {
+        node.on('pool', (ev) => {
           expect(ev.eventType).to.equal('new');
           poolObjects.push(ev.object);
         });
-        node.on('replica', ev => {
+        node.on('replica', (ev) => {
           expect(ev.eventType).to.equal('new');
           replicaObjects.push(ev.object);
         });
-        node.on('nexus', ev => {
+        node.on('nexus', (ev) => {
           expect(ev.eventType).to.equal('new');
           nexusObjects.push(ev.object);
         });
-        node.on('node', ev => {
+        node.on('node', (ev) => {
           expect(ev.eventType).to.equal('sync');
           expect(ev.object).to.equal(node);
           syncCount++;
@@ -122,7 +123,7 @@ module.exports = function() {
           expect(poolObjects[0].disks).to.have.lengthOf(2);
           expect(poolObjects[0].disks[0]).to.equal('/dev/sdb');
           expect(poolObjects[0].disks[1]).to.equal('/dev/sdc');
-          expect(poolObjects[0].state).to.equal('ONLINE');
+          expect(poolObjects[0].state).to.equal('POOL_ONLINE');
           expect(poolObjects[0].capacity).to.equal(100);
           expect(poolObjects[0].used).to.equal(14);
 
@@ -157,14 +158,14 @@ module.exports = function() {
       });
 
       // wait for the initial sync
-      beforeEach(done => {
+      beforeEach((done) => {
         node = new Node('node', {
           syncPeriod: syncInterval,
           syncRetry: syncInterval,
           syncBadLimit: 0,
         });
 
-        node.once('node', ev => {
+        node.once('node', (ev) => {
           expect(ev.eventType).to.equal('sync');
           done();
         });
@@ -182,8 +183,8 @@ module.exports = function() {
         srv.nexus = _.cloneDeep(nexus);
       });
 
-      it('should emit event when a replica is changed', done => {
-        node.once('replica', ev => {
+      it('should emit event when a replica is changed', (done) => {
+        node.once('replica', (ev) => {
           expect(ev.eventType).to.equal('mod');
           expect(ev.object).to.be.an.instanceof(Replica);
           expect(ev.object.share).to.equal('REPLICA_NVMF');
@@ -197,8 +198,8 @@ module.exports = function() {
         srv.replicas = newReplicas;
       });
 
-      it('should emit event when a replica is deleted', done => {
-        node.once('replica', ev => {
+      it('should emit event when a replica is deleted', (done) => {
+        node.once('replica', (ev) => {
           expect(ev.eventType).to.equal('del');
           expect(ev.object).to.be.an.instanceof(Replica);
           expect(ev.object.uuid).to.equal(UUID);
@@ -208,9 +209,9 @@ module.exports = function() {
         srv.replicas = [];
       });
 
-      it('should emit event when a replica is created', done => {
+      it('should emit event when a replica is created', (done) => {
         let newUuid = 'f04015e1-3689-4e34-9bed-e2dbba1e4a27';
-        node.once('replica', ev => {
+        node.once('replica', (ev) => {
           expect(ev.eventType).to.equal('new');
           expect(ev.object).to.be.an.instanceof(Replica);
           expect(ev.object.uuid).to.equal(newUuid);
@@ -227,11 +228,11 @@ module.exports = function() {
         });
       });
 
-      it('should not emit event when a replica that does not belong to any pool is created', done => {
+      it('should not emit event when a replica that does not belong to any pool is created', (done) => {
         let newUuid = 'f04015e1-3689-4e34-9bed-e2dbba1e4a28';
         let emitted = false;
 
-        node.once('replica', ev => {
+        node.once('replica', (ev) => {
           emitted = true;
           done(new Error('Event emitted'));
         });
@@ -249,29 +250,29 @@ module.exports = function() {
         });
       });
 
-      it('should emit event when a pool is changed', done => {
-        node.once('pool', ev => {
+      it('should emit event when a pool is changed', (done) => {
+        node.once('pool', (ev) => {
           expect(ev.eventType).to.equal('mod');
           expect(ev.object).to.be.an.instanceof(Pool);
-          expect(ev.object.state).to.equal('DEGRADED');
+          expect(ev.object.state).to.equal('POOL_DEGRADED');
           done();
         });
         // modify pool property
         let newPools = _.cloneDeep(pools);
-        newPools[0].state = 1;
+        newPools[0].state = enums.POOL_DEGRADED;
         srv.pools = newPools;
       });
 
-      it('should emit event when a pool is deleted', done => {
+      it('should emit event when a pool is deleted', (done) => {
         var replicaRemoved = false;
 
-        node.once('replica', ev => {
+        node.once('replica', (ev) => {
           expect(ev.eventType).to.equal('del');
           expect(ev.object).to.be.an.instanceof(Replica);
           expect(ev.object.uuid).to.equal(UUID);
           replicaRemoved = true;
         });
-        node.once('pool', ev => {
+        node.once('pool', (ev) => {
           expect(ev.eventType).to.equal('del');
           expect(ev.object).to.be.an.instanceof(Pool);
           expect(ev.object.name).to.equal('pool');
@@ -284,17 +285,17 @@ module.exports = function() {
         srv.pools = [];
       });
 
-      it('should emit event when a pool with replica is created', done => {
+      it('should emit event when a pool with replica is created', (done) => {
         let newUuid = 'f04015e1-3689-4e34-9bed-e2dbba1e4a29';
         var poolAdded = false;
 
-        node.once('pool', ev => {
+        node.once('pool', (ev) => {
           expect(ev.eventType).to.equal('new');
           expect(ev.object).to.be.an.instanceof(Pool);
           expect(ev.object.name).to.equal('new-pool');
           poolAdded = true;
         });
-        node.once('replica', ev => {
+        node.once('replica', (ev) => {
           expect(ev.eventType).to.equal('new');
           expect(ev.object).to.be.an.instanceof(Replica);
           expect(ev.object.uuid).to.equal(newUuid);
@@ -307,7 +308,7 @@ module.exports = function() {
         srv.pools.push({
           name: 'new-pool',
           disks: ['/dev/sda'],
-          state: 0,
+          state: enums.POOL_ONLINE,
           capacity: 100,
           used: 14,
         });
@@ -321,8 +322,8 @@ module.exports = function() {
         });
       });
 
-      it('should emit event when a nexus is changed', done => {
-        node.once('nexus', ev => {
+      it('should emit event when a nexus is changed', (done) => {
+        node.once('nexus', (ev) => {
           expect(ev.eventType).to.equal('mod');
           expect(ev.object).to.be.an.instanceof(Nexus);
           expect(ev.object.uuid).to.equal(UUID);
@@ -344,8 +345,8 @@ module.exports = function() {
         srv.nexus = newNexus;
       });
 
-      it('should emit event when a nexus is deleted', done => {
-        node.once('nexus', ev => {
+      it('should emit event when a nexus is deleted', (done) => {
+        node.once('nexus', (ev) => {
           expect(ev.eventType).to.equal('del');
           expect(ev.object).to.be.an.instanceof(Nexus);
           expect(ev.object.uuid).to.equal(UUID);
@@ -355,9 +356,9 @@ module.exports = function() {
         srv.nexus = [];
       });
 
-      it('should emit event when a nexus is created', done => {
+      it('should emit event when a nexus is created', (done) => {
         let newUuid = 'f04015e1-3689-4e34-9bed-e2dbba1e4a27';
-        node.once('nexus', ev => {
+        node.once('nexus', (ev) => {
           expect(ev.eventType).to.equal('new');
           expect(ev.object).to.be.an.instanceof(Nexus);
           expect(ev.object.uuid).to.equal(newUuid);
@@ -390,7 +391,7 @@ module.exports = function() {
       srv = null;
     });
 
-    it('should emit event for all objects when the node goes out of sync', done => {
+    it('should emit event for all objects when the node goes out of sync', (done) => {
       let syncInterval = 100;
       let offlineCount = 0;
 
@@ -400,26 +401,26 @@ module.exports = function() {
         syncBadLimit: 0,
       });
 
-      node.once('node', ev => {
+      node.once('node', (ev) => {
         expect(ev.eventType).to.equal('sync');
         expect(ev.object).to.equal(node);
         let firstSync = Date.now();
         srv.stop();
         srv = null;
 
-        node.once('pool', ev => {
+        node.once('pool', (ev) => {
           expect(ev.eventType).to.equal('mod');
           expect(ev.object.name).to.equal('pool');
-          expect(ev.object.state).to.equal('OFFLINE');
+          expect(ev.object.state).to.equal('POOL_OFFLINE');
           offline();
         });
-        node.once('replica', ev => {
+        node.once('replica', (ev) => {
           expect(ev.eventType).to.equal('mod');
           expect(ev.object.uuid).to.equal(UUID);
           expect(ev.object.state).to.equal('OFFLINE');
           offline();
         });
-        node.once('nexus', ev => {
+        node.once('nexus', (ev) => {
           expect(ev.eventType).to.equal('mod');
           expect(ev.object.uuid).to.equal(UUID);
           expect(ev.object.state).to.equal('OFFLINE');
@@ -439,7 +440,7 @@ module.exports = function() {
       node.connect(EGRESS_ENDPOINT);
     });
 
-    it('should tollerate n sync failures when configured so', done => {
+    it('should tollerate n sync failures when configured so', (done) => {
       let syncPeriod = 200;
       let syncRetry = 40;
 
@@ -449,17 +450,17 @@ module.exports = function() {
         syncBadLimit: 2,
       });
 
-      node.once('node', ev => {
+      node.once('node', (ev) => {
         expect(ev.eventType).to.equal('sync');
         expect(ev.object).to.equal(node);
         let firstSync = Date.now();
         srv.stop();
         srv = null;
 
-        node.once('pool', ev => {
+        node.once('pool', (ev) => {
           expect(ev.eventType).to.equal('mod');
           expect(ev.object.name).to.equal('pool');
-          expect(ev.object.state).to.equal('OFFLINE');
+          expect(ev.object.state).to.equal('POOL_OFFLINE');
           // jshint ignore:start
           expect(node.isSynced()).to.be.false;
           // jshint ignore:end
@@ -475,7 +476,7 @@ module.exports = function() {
       node.connect(EGRESS_ENDPOINT);
     });
 
-    it('should emit event when the node is synced after being disconnected', done => {
+    it('should emit event when the node is synced after being disconnected', (done) => {
       let syncPeriod = 20;
 
       node = new Node('node', {
@@ -484,7 +485,7 @@ module.exports = function() {
         syncBadLimit: 0,
       });
 
-      node.once('node', ev => {
+      node.once('node', (ev) => {
         expect(ev.eventType).to.equal('sync');
         expect(ev.object).to.equal(node);
         // jshint ignore:start
@@ -494,10 +495,10 @@ module.exports = function() {
         srv.stop();
         srv = null;
 
-        node.once('pool', ev => {
+        node.once('pool', (ev) => {
           expect(ev.eventType).to.equal('mod');
           expect(ev.object.name).to.equal('pool');
-          expect(ev.object.state).to.equal('OFFLINE');
+          expect(ev.object.state).to.equal('POOL_OFFLINE');
           // jshint ignore:start
           expect(node.isSynced()).to.be.false;
           // jshint ignore:end
@@ -509,7 +510,7 @@ module.exports = function() {
             nexus
           ).start();
 
-          node.once('node', ev => {
+          node.once('node', (ev) => {
             expect(ev.eventType).to.equal('sync');
             expect(ev.object).to.equal(node);
             // jshint ignore:start
@@ -523,7 +524,7 @@ module.exports = function() {
     });
   });
 
-  describe('object create', function() {
+  describe('object create', function () {
     var replica;
     var pool;
     var nexus;
@@ -531,12 +532,12 @@ module.exports = function() {
     this.timeout(100);
 
     // start a fake mayastor server
-    before(done => {
+    before((done) => {
       srv = new MayastorServer(EGRESS_ENDPOINT, [], [], []).start();
 
       // wait for the initial sync
       node = new Node('node');
-      node.once('node', ev => {
+      node.once('node', (ev) => {
         expect(ev.eventType).to.equal('sync');
         done();
       });
@@ -556,7 +557,7 @@ module.exports = function() {
     it('should create a pool on the node', async () => {
       let emitted = false;
 
-      node.once('pool', ev => {
+      node.once('pool', (ev) => {
         expect(ev.eventType).to.equal('new');
         expect(ev.object.name).to.equal('pool');
         expect(ev.object.disks).to.have.lengthOf(1);
@@ -575,7 +576,7 @@ module.exports = function() {
     it('should create a replica on the pool', async () => {
       let emitted = false;
 
-      node.once('replica', ev => {
+      node.once('replica', (ev) => {
         expect(ev.eventType).to.equal('new');
         expect(ev.object.uuid).to.equal(UUID);
         expect(ev.object.size).to.equal(100);
@@ -592,7 +593,7 @@ module.exports = function() {
     it('should create a nexus on the node', async () => {
       let emitted = false;
 
-      node.once('nexus', ev => {
+      node.once('nexus', (ev) => {
         expect(ev.eventType).to.equal('new');
         expect(ev.object.uuid).to.equal(UUID);
         expect(ev.object.size).to.equal(100);
@@ -611,26 +612,26 @@ module.exports = function() {
     });
   });
 
-  describe('object list', function() {
+  describe('object list', function () {
     const UUID1 = 'ba5e39e9-0c0e-4973-8a3a-0dccada09cb1';
     const UUID2 = 'ba5e39e9-0c0e-4973-8a3a-0dccada09cb2';
     const UUID3 = 'ba5e39e9-0c0e-4973-8a3a-0dccada09cb3';
     const UUID4 = 'ba5e39e9-0c0e-4973-8a3a-0dccada09cb4';
 
     // start a fake mayastor server
-    before(done => {
+    before((done) => {
       var pools = [
         {
           name: 'pool1',
           disks: ['/dev/sdb', '/dev/sdc'],
-          state: 0,
+          state: enums.POOL_ONLINE,
           capacity: 100,
           used: 14,
         },
         {
           name: 'pool2',
           disks: ['/dev/sda'],
-          state: 0,
+          state: enums.POOL_ONLINE,
           capacity: 100,
           used: 14,
         },
@@ -674,7 +675,7 @@ module.exports = function() {
 
       // wait for the initial sync
       node = new Node('node');
-      node.once('node', ev => {
+      node.once('node', (ev) => {
         expect(ev.eventType).to.equal('sync');
         done();
       });

@@ -25,7 +25,7 @@ function getCsiClient(svc) {
   return client;
 }
 
-module.exports = function() {
+module.exports = function () {
   it('should start even if there is stale socket file', async () => {
     await fs.writeFile(SOCKPATH, 'blabla');
     var server = new CsiServer(SOCKPATH);
@@ -42,7 +42,7 @@ module.exports = function() {
     throw new Error('Server did not clean up the socket file');
   });
 
-  describe('identity', function() {
+  describe('identity', function () {
     var server;
     var client;
 
@@ -94,7 +94,7 @@ module.exports = function() {
     });
   });
 
-  describe('controller', function() {
+  describe('controller', function () {
     var client;
     var registry, volumes;
     var getCapacityStub, createVolumeStub, getVolumesStub, destroyVolumeStub;
@@ -124,7 +124,7 @@ module.exports = function() {
       }
     });
 
-    describe('generic', function() {
+    describe('generic', function () {
       var server;
 
       afterEach(async () => {
@@ -191,7 +191,7 @@ module.exports = function() {
       });
     });
 
-    describe('CreateVolume', function() {
+    describe('CreateVolume', function () {
       var server;
       // place-holder for return value from createVolume when we don't care
       // about the data (i.e. when testing error cases).
@@ -214,6 +214,31 @@ module.exports = function() {
         }
       });
 
+      it('should create a volume and return parameters in volume context', async () => {
+        createVolumeStub.resolves(returnedVolume);
+        var parameters = { protocol: 'nbd', repl: 3, blah: 'again' };
+        let result = await client.createVolume().sendMessage({
+          name: 'pvc-' + UUID,
+          capacityRange: {
+            requiredBytes: 10,
+            limitBytes: 20,
+          },
+          volumeCapabilities: [
+            {
+              accessMode: { mode: 'SINGLE_NODE_WRITER' },
+              block: {},
+            },
+          ],
+          parameters: parameters,
+        });
+        // volume context is a of type map<string><string>
+        var expected = {};
+        for (const key in parameters) {
+          expected[key] = parameters[key].toString();
+        }
+        sinon.assert.match(result.volume.volumeContext, expected);
+      });
+
       it('should fail if topology requirement other than hostname', async () => {
         createVolumeStub.resolves(returnedVolume);
         await shouldFailWith(GrpcCode.INVALID_ARGUMENT, () =>
@@ -233,6 +258,7 @@ module.exports = function() {
               requisite: [{ segments: { rack: 'some-rack-info' } }],
               preferred: [],
             },
+            parameters: { protocol: 'nbd' },
           })
         );
       });
@@ -253,6 +279,7 @@ module.exports = function() {
                 block: {},
               },
             ],
+            parameters: { protocol: 'nbd' },
           })
         );
       });
@@ -272,6 +299,7 @@ module.exports = function() {
                 block: {},
               },
             ],
+            parameters: { protocol: 'nbd' },
           })
         );
       });
@@ -293,6 +321,7 @@ module.exports = function() {
                 filesystem: {},
               },
             ],
+            parameters: { protocol: 'nbd' },
           })
         );
       });
@@ -312,6 +341,7 @@ module.exports = function() {
                 filesystem: {},
               },
             ],
+            parameters: { protocol: 'nbd' },
           })
         );
       });
@@ -333,6 +363,7 @@ module.exports = function() {
           accessibilityRequirements: {
             requisite: [{ segments: { 'kubernetes.io/hostname': 'node' } }],
           },
+          parameters: { protocol: 'nbd' },
         });
         sinon.assert.calledWith(createVolumeStub, UUID, {
           replicaCount: 1,
@@ -368,6 +399,7 @@ module.exports = function() {
               },
             ],
           },
+          parameters: { protocol: 'nbd' },
         });
         sinon.assert.calledWith(createVolumeStub, UUID, {
           replicaCount: 1,
@@ -392,7 +424,7 @@ module.exports = function() {
               block: {},
             },
           ],
-          parameters: { repl: '3' },
+          parameters: { repl: '3', protocol: 'nbd' },
         });
         sinon.assert.calledWith(createVolumeStub, UUID, {
           replicaCount: 3,
@@ -418,13 +450,13 @@ module.exports = function() {
                 block: {},
               },
             ],
-            parameters: { repl: 'bla2' },
+            parameters: { repl: 'bla2', protocol: 'nbd' },
           })
         );
       });
     });
 
-    describe('DeleteVolume', function() {
+    describe('DeleteVolume', function () {
       var server;
 
       beforeEach(async () => {
@@ -460,7 +492,7 @@ module.exports = function() {
       });
     });
 
-    describe('ListVolumes', function() {
+    describe('ListVolumes', function () {
       var server;
       // uuid except the last two digits
       var uuidBase = '4334cc8a-2fed-45ed-866f-3716639db5';
@@ -494,7 +526,7 @@ module.exports = function() {
         // jshint ignore:start
         expect(resp.nextToken).to.be.empty;
         // jshint ignore:end
-        let vols = resp.entries.map(ent => ent.volume);
+        let vols = resp.entries.map((ent) => ent.volume);
         expect(vols).to.have.lengthOf(100);
         for (let i = 0; i < 10; i++) {
           for (let j = 0; j < 10; j++) {
@@ -513,7 +545,7 @@ module.exports = function() {
             maxEntries: pageSize,
             startingToken: next,
           });
-          let vols = resp.entries.map(ent => ent.volume);
+          let vols = resp.entries.map((ent) => ent.volume);
           next = resp.nextToken;
           if (next) {
             expect(vols).to.have.lengthOf(pageSize);
@@ -538,7 +570,7 @@ module.exports = function() {
       });
     });
 
-    describe('ControllerPublishVolume', function() {
+    describe('ControllerPublishVolume', function () {
       var server;
 
       before(async () => {
@@ -575,11 +607,13 @@ module.exports = function() {
               mount_flags: 'ro',
             },
           },
+          volumeContext: { protocol: 'nbd' },
         });
 
         sinon.assert.calledOnce(getVolumesStub);
         sinon.assert.calledWith(getVolumesStub, UUID);
         sinon.assert.calledOnce(publishStub);
+        sinon.assert.calledWith(publishStub, 'nbd');
       });
 
       it('should not publish volume if it does not exist', async () => {
@@ -597,6 +631,7 @@ module.exports = function() {
                 mount_flags: 'ro',
               },
             },
+            volumeContext: { protocol: 'nbd' },
           })
         );
         sinon.assert.calledOnce(getVolumesStub);
@@ -623,6 +658,7 @@ module.exports = function() {
                 mount_flags: 'ro',
               },
             },
+            volumeContext: { protocol: 'nbd' },
           })
         );
         sinon.assert.calledOnce(getVolumesStub);
@@ -650,6 +686,7 @@ module.exports = function() {
                 mount_flags: 'ro',
               },
             },
+            volumeContext: { protocol: 'nbd' },
           })
         );
       });
@@ -674,6 +711,7 @@ module.exports = function() {
                 mount_flags: 'ro',
               },
             },
+            volumeContext: { protocol: 'nbd' },
           })
         );
       });
@@ -698,12 +736,37 @@ module.exports = function() {
                 mount_flags: 'ro',
               },
             },
+            volumeContext: { protocol: 'nbd' },
+          })
+        );
+      });
+
+      it('should not publish volume if share protocol is not specified', async () => {
+        let volume = new Volume(UUID, registry, {});
+        let publishStub = sinon.stub(volume, 'publish');
+        publishStub.resolves();
+        let getNodeNameStub = sinon.stub(volume, 'getNodeName');
+        getNodeNameStub.returns('node');
+        getVolumesStub.returns(volume);
+
+        await shouldFailWith(GrpcCode.INVALID_ARGUMENT, () =>
+          client.controllerPublishVolume().sendMessage({
+            volumeId: UUID,
+            nodeId: 'mayastor://node/10.244.2.15:10124',
+            readonly: false,
+            volumeCapability: {
+              accessMode: { mode: 'SINGLE_NODE_WRITER' },
+              mount: {
+                fsType: 'xfs',
+                mount_flags: 'ro',
+              },
+            },
           })
         );
       });
     });
 
-    describe('ControllerUnpublishVolume', function() {
+    describe('ControllerUnpublishVolume', function () {
       var server;
 
       before(async () => {
@@ -785,7 +848,7 @@ module.exports = function() {
       });
     });
 
-    describe('ValidateVolumeCapabilities', function() {
+    describe('ValidateVolumeCapabilities', function () {
       var server;
 
       before(async () => {
@@ -811,7 +874,7 @@ module.exports = function() {
         ];
         var resp = await client.validateVolumeCapabilities().sendMessage({
           volumeId: UUID,
-          volumeCapabilities: caps.map(c => {
+          volumeCapabilities: caps.map((c) => {
             return {
               accessMode: { mode: c },
               block: {},
@@ -836,7 +899,7 @@ module.exports = function() {
         ];
         var resp = await client.validateVolumeCapabilities().sendMessage({
           volumeId: UUID,
-          volumeCapabilities: caps.map(c => {
+          volumeCapabilities: caps.map((c) => {
             return {
               accessMode: { mode: c },
               block: {},
@@ -866,7 +929,7 @@ module.exports = function() {
       });
     });
 
-    describe('GetCapacity', function() {
+    describe('GetCapacity', function () {
       var server;
 
       before(async () => {

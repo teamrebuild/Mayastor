@@ -23,7 +23,7 @@ const defaultOpts = {
   limitBytes: 100,
 };
 
-module.exports = function() {
+module.exports = function () {
   it('should stringify volume name', () => {
     let registry = new Registry();
     let volume = new Volume(UUID, registry, defaultOpts);
@@ -65,7 +65,7 @@ module.exports = function() {
     volume.newNexus(nexus);
 
     stub.resolves({ devicePath: '/dev/nbd0' });
-    await volume.publish();
+    await volume.publish('nbd');
     expect(nexus.devicePath).to.equal('/dev/nbd0');
 
     stub.resolves({});

@@ -4,7 +4,7 @@
 
 const _ = require('lodash');
 const assert = require('assert');
-const { GrpcCode, GrpcError } = require('./grpc_client');
+const { GrpcCode, GrpcError, mayastor } = require('./grpc_client');
 const log = require('./logger').Logger('nexus');
 
 function compareChildren(a, b) {
@@ -118,10 +118,10 @@ class Nexus {
   }
 
   // Publish the nexus to make accessible for IO.
-  //
+  // @params {string}   protocol      The nexus share protocol.
   // @returns {string} The device path of nexus block device.
   //
-  async publish() {
+  async publish(protocol) {
     var res;
 
     if (this.devicePath) {
@@ -130,13 +130,25 @@ class Nexus {
         `Nexus ${this} has been already published`
       );
     }
-    log.debug(`Publishing nexus "${this}" ...`);
 
+    let nexus_protocol = 'NEXUS_'.concat(protocol.toUpperCase());
+    var share = mayastor.ShareProtocolNexus.type.value.find(
+      (ent) => ent.name == nexus_protocol
+    );
+    if (!share) {
+      throw new GrpcError(
+        GrpcCode.NOT_FOUND,
+        `Cannot find protocol "${protocol}" for Nexus ${this}`
+      );
+    }
+    log.info(
+      `Publishing nexus "${this}" with protocol=${protocol}  share=${share}...`
+    );
     try {
       res = await this.node.call('publishNexus', {
         uuid: this.uuid,
         key: '',
-        share: 0, // hard-coded to use Nbd for now.
+        share: share.number,
       });
     } catch (err) {
       throw new GrpcError(
@@ -173,7 +185,7 @@ class Nexus {
   //
   async addReplica(replica) {
     let uri = replica.uri;
-    if (this.children.find(ch => ch.uri == uri)) {
+    if (this.children.find((ch) => ch.uri == uri)) {
       return;
     }
     log.debug(`Adding uri "${uri}" to nexus "${this}" ...`);
@@ -203,7 +215,7 @@ class Nexus {
   //
   async removeReplica(replica) {
     let uri = replica.uri;
-    if (!this.children.find(ch => ch.uri == uri)) {
+    if (!this.children.find((ch) => ch.uri == uri)) {
       return;
     }
 
@@ -221,7 +233,7 @@ class Nexus {
       );
     }
     // get index again in case the list changed in the meantime
-    let idx = this.children.findIndex(ch => ch.uri == uri);
+    let idx = this.children.findIndex((ch) => ch.uri == uri);
     if (idx >= 0) {
       this.children.splice(idx, 1);
     }

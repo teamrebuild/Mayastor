@@ -145,21 +145,21 @@ pub enum Error {
         name: String,
     },
     #[snafu(display(
-        "Rebuild task not found for child {} of nexus {}",
+        "Rebuild job not found for child {} of nexus {}",
         child,
         name,
     ))]
-    RebuildTaskNotFound {
+    RebuildJobNotFound {
         source: RebuildError,
         child: String,
         name: String,
     },
     #[snafu(display(
-        "Failed to remove rebuild task {} of nexus {}",
+        "Failed to remove rebuild job {} of nexus {}",
         child,
         name,
     ))]
-    RemoveRebuildTask {
+    RemoveRebuildJob {
         source: RebuildError,
         child: String,
         name: String,
@@ -794,7 +794,7 @@ pub async fn nexus_create(
     let mut ni = Nexus::new(name, size, uuid, None);
 
     for child in children {
-        if let Err(err) = ni.register_child(child).await {
+        if let Err(err) = ni.create_and_register(child).await {
             ni.destroy_children().await;
             return Err(err).context(CreateChild {
                 name: ni.name.clone(),

@@ -15,7 +15,7 @@ const { exec } = require('child_process');
 const { createClient } = require('grpc-kit');
 const grpc = require('grpc');
 const common = require('./test_common');
-const mayastorProto = require('./mayastor_proto');
+const enums = require('./grpc_enums');
 // just some UUID used for nexus ID
 const UUID = 'dbe4d7eb-118a-4d15-b789-a18d9af6ff21';
 const UUID2 = 'dbe4d7eb-118a-4d15-b789-a18d9af6ff22';
@@ -28,7 +28,6 @@ const uringFile = '/tmp/uring-backend';
 const diskSize = 64 * 1024 * 1024;
 // external IP address detected by common lib
 const externIp = common.getMyIp();
-const mayastorProtoConstants = mayastorProto.getConstants();
 
 // Instead of using mayastor grpc methods to create replicas we use a config
 // file to create them. Advantage is that we don't depend on bugs in replica
@@ -127,10 +126,10 @@ function createGrpcClient(service) {
   );
 }
 
-var doUring = (function() {
+var doUring = (function () {
   var executed = false;
   var supportsUring = false;
-  return function() {
+  return function () {
     if (!executed) {
       executed = true;
       const { exec } = require('child_process');
@@ -142,7 +141,7 @@ var doUring = (function() {
         'uring-support'
       );
       const CMD = URING_SUPPORT_CMD + ' ' + uringFile;
-      exec(CMD, error => {
+      exec(CMD, (error) => {
         if (error) {
           return;
         }
@@ -153,12 +152,12 @@ var doUring = (function() {
   };
 })();
 
-describe('nexus', function() {
+describe('nexus', function () {
   var client;
   var nbd_device;
   var iscsi_uri;
 
-  const unpublish = args => {
+  const unpublish = (args) => {
     return new Promise((resolve, reject) => {
       client.unpublishNexus(args, (err, data) => {
         if (err) return reject(err);
@@ -167,7 +166,7 @@ describe('nexus', function() {
     });
   };
 
-  const publish = args => {
+  const publish = (args) => {
     return new Promise((resolve, reject) => {
       client.publishNexus(args, (err, data) => {
         if (err) return reject(err);
@@ -176,7 +175,7 @@ describe('nexus', function() {
     });
   };
 
-  const destroyNexus = args => {
+  const destroyNexus = (args) => {
     return new Promise((resolve, reject) => {
       client.destroyNexus(args, (err, data) => {
         if (err) return reject(err);
@@ -185,7 +184,7 @@ describe('nexus', function() {
     });
   };
 
-  const createNexus = args => {
+  const createNexus = (args) => {
     return new Promise((resolve, reject) => {
       client.createNexus(args, (err, data) => {
         if (err) return reject(err);
@@ -204,7 +203,7 @@ describe('nexus', function() {
   };
   this.timeout(50000); // for network tests we need long timeouts
 
-  before(done => {
+  before((done) => {
     client = createGrpcClient('MayaStor');
     if (!client) {
       return done(new Error('Failed to initialize grpc client'));
@@ -213,24 +212,24 @@ describe('nexus', function() {
     async.series(
       [
         common.ensureNbdWritable,
-        next => {
+        (next) => {
           fs.writeFile(aioFile, '', next);
         },
-        next => {
+        (next) => {
           fs.truncate(aioFile, diskSize, next);
         },
-        next => {
+        (next) => {
           fs.writeFile(uringFile, '', next);
         },
-        next => {
+        (next) => {
           fs.truncate(uringFile, diskSize, next);
         },
-        next => {
+        (next) => {
           if (doUring())
             createArgs.children.push(`uring:///${uringFile}?blk_size=4096`);
           next();
         },
-        next => {
+        (next) => {
           // Start two spdk instances. The first one will hold the remote
           // nvmf target and the second one everything including nexus.
           // We must do this because if nvme initiator and target are in
@@ -247,7 +246,7 @@ describe('nexus', function() {
           common.startMayastor(configNexus, ['-r', common.SOCK, '-s', 386]);
 
           common.startMayastorGrpc();
-          common.waitFor(pingDone => {
+          common.waitFor((pingDone) => {
             // use harmless method to test if the mayastor is up and running
             client.listPools({}, pingDone);
           }, next);
@@ -257,20 +256,20 @@ describe('nexus', function() {
     );
   });
 
-  after(done => {
+  after((done) => {
     async.series(
       [
         common.stopAll,
         common.restoreNbdPerms,
-        next => {
-          fs.unlink(aioFile, err => next());
+        (next) => {
+          fs.unlink(aioFile, (err) => next());
         },
-        next => {
-          if (doUring()) fs.unlink(uringFile, err => next());
+        (next) => {
+          if (doUring()) fs.unlink(uringFile, (err) => next());
           else next();
         },
       ],
-      err => {
+      (err) => {
         if (client != null) {
           client.close();
         }
@@ -279,7 +278,7 @@ describe('nexus', function() {
     );
   });
 
-  it('should create a nexus using all types of replicas', done => {
+  it('should create a nexus using all types of replicas', (done) => {
     let args = {
       uuid: UUID,
       size: diskSize,
@@ -295,7 +294,7 @@ describe('nexus', function() {
     client.CreateNexus(args, done);
   });
 
-  it('should list the created nexus', done => {
+  it('should list the created nexus', (done) => {
     client.ListNexus({}, (err, res) => {
       if (err) return done(err);
       assert.lengthOf(res.nexus_list, 1);
@@ -331,13 +330,13 @@ describe('nexus', function() {
     });
   });
 
-  it('should be able to remove one of its children', done => {
+  it('should be able to remove one of its children', (done) => {
     let args = {
       uuid: UUID,
       uri: `nvmf://127.0.0.1:8420/nqn.2019-05.io.openebs:disk2`,
     };
 
-    client.RemoveChildNexus(args, err => {
+    client.RemoveChildNexus(args, (err) => {
       if (err) return done(err);
 
       client.ListNexus({}, (err, res) => {
@@ -345,19 +344,19 @@ describe('nexus', function() {
         let nexus = res.nexus_list[0];
         const expectedChildren = 3 + doUring();
         assert.lengthOf(nexus.children, expectedChildren);
-        assert(!nexus.children.find(ch => ch.uri.match(/^nvmf:/)));
+        assert(!nexus.children.find((ch) => ch.uri.match(/^nvmf:/)));
         done();
       });
     });
   });
 
-  it('should be able to add the child back', done => {
+  it('should be able to add the child back', (done) => {
     let args = {
       uuid: UUID,
       uri: `nvmf://127.0.0.1:8420/nqn.2019-05.io.openebs:disk2`,
     };
 
-    client.AddChildNexus(args, err => {
+    client.AddChildNexus(args, (err) => {
       if (err) return done(err);
 
       client.ListNexus({}, (err, res) => {
@@ -365,13 +364,13 @@ describe('nexus', function() {
         let nexus = res.nexus_list[0];
         const expectedChildren = 4 + doUring();
         assert.lengthOf(nexus.children, expectedChildren);
-        assert(nexus.children.find(ch => ch.uri.match(/^nvmf:/)));
+        assert(nexus.children.find((ch) => ch.uri.match(/^nvmf:/)));
         done();
       });
     });
   });
 
-  it('should fail to create another nexus with in use URIs', done => {
+  it('should fail to create another nexus with in use URIs', (done) => {
     let args = {
       uuid: UUID2,
       size: 131072,
@@ -385,7 +384,7 @@ describe('nexus', function() {
     });
   });
 
-  it('should fail creating a nexus with non existing URIs', done => {
+  it('should fail creating a nexus with non existing URIs', (done) => {
     let args = {
       uuid: UUID2,
       size: 131072,
@@ -401,11 +400,11 @@ describe('nexus', function() {
     });
   });
 
-  it('should publish the nexus using nbd', done => {
+  it('should publish the nexus using nbd', (done) => {
     client.PublishNexus(
       {
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_NBD,
+        share: enums.NEXUS_NBD,
       },
       (err, res) => {
         assert(res.device_path);
@@ -415,18 +414,18 @@ describe('nexus', function() {
     );
   });
 
-  it('should un-publish the nexus device', done => {
+  it('should un-publish the nexus device', (done) => {
     client.unpublishNexus({ uuid: UUID }, (err, res) => {
       if (err) done(err);
       done();
     });
   });
 
-  it('should re-publish the nexus using NBD, and a crypto key', done => {
+  it('should re-publish the nexus using NBD, and a crypto key', (done) => {
     client.PublishNexus(
       {
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_NBD,
+        share: enums.NEXUS_NBD,
         key: '0123456789123456',
       },
       (err, res) => {
@@ -453,23 +452,23 @@ describe('nexus', function() {
     await fd.read(buffer, 0, 512);
     await fd.close();
 
-    buffer.forEach(e => {
+    buffer.forEach((e) => {
       assert(e === 122);
     });
   });
 
-  it('should un-publish the NBD nexus device', done => {
+  it('should un-publish the NBD nexus device', (done) => {
     client.unpublishNexus({ uuid: UUID }, (err, res) => {
       if (err) done(err);
       done();
     });
   });
 
-  it('should publish the nexus using iscsi', done => {
+  it('should publish the nexus using iscsi', (done) => {
     client.PublishNexus(
       {
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_ISCSI,
+        share: enums.NEXUS_ISCSI,
       },
       (err, res) => {
         assert(res.device_path);
@@ -478,18 +477,18 @@ describe('nexus', function() {
     );
   });
 
-  it('should un-publish the iscsi nexus device', done => {
+  it('should un-publish the iscsi nexus device', (done) => {
     client.unpublishNexus({ uuid: UUID }, (err, res) => {
       if (err) done(err);
       done();
     });
   });
 
-  it('should publish the nexus using iscsi', done => {
+  it('should publish the nexus using iscsi', (done) => {
     client.PublishNexus(
       {
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_ISCSI,
+        share: enums.NEXUS_ISCSI,
       },
       (err, res) => {
         assert(res.device_path);
@@ -498,11 +497,11 @@ describe('nexus', function() {
     );
   });
 
-  it('should fail another publish request using a different protocol', done => {
+  it('should fail another publish request using a different protocol', (done) => {
     client.PublishNexus(
       {
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_NBD,
+        share: enums.NEXUS_NBD,
       },
       (err, res) => {
         if (!err) return done(new Error('Expected error'));
@@ -512,11 +511,11 @@ describe('nexus', function() {
     );
   });
 
-  it('should succeed another publish request using the existing protocol', done => {
+  it('should succeed another publish request using the existing protocol', (done) => {
     client.PublishNexus(
       {
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_ISCSI,
+        share: enums.NEXUS_ISCSI,
       },
       (err, res) => {
         if (err) done(err);
@@ -526,25 +525,25 @@ describe('nexus', function() {
     );
   });
 
-  it('should un-publish the iscsi nexus device', done => {
+  it('should un-publish the iscsi nexus device', (done) => {
     client.unpublishNexus({ uuid: UUID }, (err, res) => {
       if (err) done(err);
       done();
     });
   });
 
-  it('should succeed another un-publish request', done => {
+  it('should succeed another un-publish request', (done) => {
     client.unpublishNexus({ uuid: UUID }, (err, res) => {
       if (err) done(err);
       done();
     });
   });
 
-  it('should re-publish the nexus using iSCSI and a crypto-key', done => {
+  it('should re-publish the nexus using iSCSI and a crypto-key', (done) => {
     client.PublishNexus(
       {
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_ISCSI,
+        share: enums.NEXUS_ISCSI,
         key: '0123456789123456',
       },
       (err, res) => {
@@ -555,7 +554,7 @@ describe('nexus', function() {
     );
   });
 
-  it('should send io to the iscsi nexus device', done => {
+  it('should send io to the iscsi nexus device', (done) => {
     let uri = iscsi_uri + '/0';
     // runs the perf test for 1 second
     exec('iscsi-perf -t 1 ' + uri, (err, stdout, stderr) => {
@@ -567,8 +566,8 @@ describe('nexus', function() {
     });
   });
 
-  it('should destroy the nexus without explicitly un-publishing it', done => {
-    client.DestroyNexus({ uuid: UUID }, err => {
+  it('should destroy the nexus without explicitly un-publishing it', (done) => {
+    client.DestroyNexus({ uuid: UUID }, (err) => {
       if (err) return done(err);
 
       client.ListNexus({}, (err, res) => {
@@ -579,7 +578,7 @@ describe('nexus', function() {
     });
   });
 
-  it('should fail to create a nexus with mixed block sizes', done => {
+  it('should fail to create a nexus with mixed block sizes', (done) => {
     let args = {
       uuid: UUID,
       size: 131072,
@@ -595,7 +594,7 @@ describe('nexus', function() {
     });
   });
 
-  it('should fail to create a nexus with size larger than any of its replicas', done => {
+  it('should fail to create a nexus with size larger than any of its replicas', (done) => {
     let args = {
       uuid: UUID,
       size: 2 * diskSize,
@@ -612,7 +611,7 @@ describe('nexus', function() {
     });
   });
 
-  it('should have zero nexus devices left', done => {
+  it('should have zero nexus devices left', (done) => {
     client.ListNexus({}, (err, res) => {
       if (err) return done(err);
       assert.lengthOf(res.nexus_list, 0);
@@ -625,7 +624,7 @@ describe('nexus', function() {
       await createNexus(createArgs);
       await publish({
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_NBD,
+        share: enums.NEXUS_NBD,
       });
       await unpublish({ uuid: UUID });
       await destroyNexus({ uuid: UUID });
@@ -637,14 +636,14 @@ describe('nexus', function() {
       await createNexus(createArgs);
       await publish({
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_ISCSI,
+        share: enums.NEXUS_ISCSI,
       });
       await unpublish({ uuid: UUID });
       await destroyNexus({ uuid: UUID });
     }
   });
 
-  it('should have zero nexus devices left', done => {
+  it('should have zero nexus devices left', (done) => {
     client.ListNexus({}, (err, res) => {
       if (err) return done(err);
       assert.lengthOf(res.nexus_list, 0);
@@ -657,7 +656,7 @@ describe('nexus', function() {
       await createNexus(createArgs);
       await publish({
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_NBD,
+        share: enums.NEXUS_NBD,
       });
       await destroyNexus({ uuid: UUID });
     }
@@ -668,13 +667,13 @@ describe('nexus', function() {
       await createNexus(createArgs);
       await publish({
         uuid: UUID,
-        share: mayastorProtoConstants.ShareProtocolNexus.NEXUS_ISCSI,
+        share: enums.NEXUS_ISCSI,
       });
       await destroyNexus({ uuid: UUID });
     }
   });
 
-  it('should have zero nexus devices left', done => {
+  it('should have zero nexus devices left', (done) => {
     client.ListNexus({}, (err, res) => {
       if (err) return done(err);
       assert.lengthOf(res.nexus_list, 0);
@@ -689,7 +688,7 @@ describe('nexus', function() {
     }
   });
 
-  it('should have zero nexus devices left', done => {
+  it('should have zero nexus devices left', (done) => {
     client.ListNexus({}, (err, res) => {
       if (err) return done(err);
       assert.lengthOf(res.nexus_list, 0);
@@ -697,11 +696,11 @@ describe('nexus', function() {
     });
   });
 
-  it('should be the case that we do not have any dangling NBD devices left on the system', done => {
+  it('should be the case that we do not have any dangling NBD devices left on the system', (done) => {
     exec('sleep 1; lsblk --json', (err, stdout, stderr) => {
       if (err) return done(err);
       let output = JSON.parse(stdout);
-      output.blockdevices.forEach(e => {
+      output.blockdevices.forEach((e) => {
         assert(e.name.indexOf('nbd') === -1, `NBD Device found:\n${stdout}`);
       });
       done();
