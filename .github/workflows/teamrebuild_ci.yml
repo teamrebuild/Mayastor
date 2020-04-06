@@ -27,7 +27,7 @@ jobs:
           cat /proc/version
           # Allocate 1024 2MiB hugepages
           echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages 1>/dev/null
-          dmesg   
+          dmesg    
 
       - name: Env Setup
         run: |
