@@ -44,10 +44,6 @@ jobs:
         run: |
           docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo build --all'"
 
-      - name: Cargo Test Jsonrpc
-        run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd jsonrpc && cargo test && popd'"
-
       - name: Cargo Test Mayastor
         run: |
           docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && ( cargo test -- --test-threads=1 || dmesg ) && popd'"
