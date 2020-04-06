@@ -50,23 +50,10 @@ jobs:
 
       - name: Cargo Test Mayastor
         run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && RUST_BACKTRACE=full cargo test -- --test-threads=1 && popd'"
-
-      - name: Js test_cli
-        run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor-test && npm install && ./node_modules/mocha/bin/mocha test_cli.js && popd'"
-
-      - name: Js test_replica
-        run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor-test && ./node_modules/mocha/bin/mocha test_replica.js && popd'"
-
-      - name: Js test_csi
-        run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor-test && ./node_modules/mocha/bin/mocha test_csi.js && popd'"
-
-      - name: Js test_nexus
-        run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor-test && ./node_modules/mocha/bin/mocha test_nexus.js && popd'"
+          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && ( cargo test -- --test-threads=1 || dmesg ) && popd'"
+          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && ( cargo test -- --test-threads=1 || dmesg ) && popd'"
+          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && ( cargo test -- --test-threads=1 || dmesg ) && popd'"
+          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'pushd mayastor && ( cargo test -- --test-threads=1 || dmesg ) && popd'"
 
       - name: End
         run: |
@@ -84,22 +71,7 @@ jobs:
           # Launch the nix container as a daemon
           docker run -d --name "nix" --rm -v $PWD:/MayaStor teamrebuild/ci:latest tail -f /dev/null
 
-      - name: Pretty
+      - name: End
         run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'prettier --version'"
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'prettier --config .prettierrc --check csi/moac/*.js mayastor-test/*.js'"
+          docker kill "nix"
 
-      - name: JS
-        run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'jshint --config .jshintrc csi/moac/*.js mayastor-test/*.js'"
-
-      - name: Cargo fmt
-        run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo fmt --version'"
-          echo 'set -e; for d in */Cargo.toml; do dir=`dirname "$d"`; if [ ! -f "$dir"/.git ]; then echo "cargo fmt -p "$dir" -- --check"; cargo fmt -p "$dir" -- --check; fi; done' > fmt.sh
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'sh fmt.sh'"
-
-      - name: Cargo Clippy
-        run: |
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo clippy --version'"
-          docker exec "nix" /bin/sh -c "cd /MayaStor; nix-shell --run 'cargo clippy --all --all-targets -- -D warnings'"
