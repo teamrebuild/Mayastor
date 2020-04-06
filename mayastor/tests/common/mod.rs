@@ -47,6 +47,43 @@ macro_rules! test_init {
     };
 }
 
+macro_rules! m_assert_eq {
+    ($left:expr, $right:expr) => ({
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    // The reborrows below are intentional. Without them, the stack slot for the
+                    // borrow is initialized even before the values are compared, leading to a
+                    // noticeable slow down.
+                    print_dmesg();
+                    panic!(r#"assertion failed: `(left == right)`
+  left: `{:?}`,
+ right: `{:?}`"#, &*left_val, &*right_val)
+                }
+            }
+        }
+    });
+    ($left:expr, $right:expr,) => ({
+        assert_eq!($left, $right)
+    });
+    ($left:expr, $right:expr, $($arg:tt)+) => ({
+        match (&($left), &($right)) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    // The reborrows below are intentional. Without them, the stack slot for the
+                    // borrow is initialized even before the values are compared, leading to a
+                    // noticeable slow down.
+                    print_dmesg();
+                    panic!(r#"assertion failed: `(left == right)`
+  left: `{:?}`,
+ right: `{:?}`: {}"#, &*left_val, &*right_val,
+                           format_args!($($arg)+))
+                }
+            }
+        }
+    });
+}
+
 pub fn mayastor_test_init() {
     fn binary_present(name: &str) -> Result<bool, std::env::VarError> {
         std::env::var("PATH").and_then(|paths| {
@@ -70,6 +107,13 @@ pub fn mayastor_test_init() {
     mayastor::CPS_INIT!();
 }
 
+pub fn print_dmesg() {
+    let output = Command::new("dmesg")
+        .output()
+        .expect("failed get kernel logs");
+    println!("{:?}", output);
+}
+
 pub fn dd_random_file(path: &str, bs: u32, size: u64) {
     let count = size * 1024 / bs as u64;
     let output = Command::new("dd")
@@ -82,7 +126,7 @@ pub fn dd_random_file(path: &str, bs: u32, size: u64) {
         .output()
         .expect("failed exec dd");
 
-    assert_eq!(output.status.success(), true);
+    m_assert_eq!(output.status.success(), true);
 }
 
 pub fn truncate_file(path: &str, size: u64) {
@@ -91,7 +135,7 @@ pub fn truncate_file(path: &str, size: u64) {
         .output()
         .expect("failed exec truncate");
 
-    assert_eq!(output.status.success(), true);
+    m_assert_eq!(output.status.success(), true);
 }
 
 pub fn fscheck(device: &str) {
@@ -102,7 +146,7 @@ pub fn fscheck(device: &str) {
 
     io::stdout().write_all(&output.stderr).unwrap();
     io::stdout().write_all(&output.stdout).unwrap();
-    assert_eq!(output.status.success(), true);
+    m_assert_eq!(output.status.success(), true);
 }
 
 pub fn mkfs(path: &str, fstype: &str) {
@@ -121,7 +165,7 @@ pub fn mkfs(path: &str, fstype: &str) {
 
     io::stdout().write_all(&output.stderr).unwrap();
     io::stdout().write_all(&output.stdout).unwrap();
-    assert_eq!(output.status.success(), true);
+    m_assert_eq!(output.status.success(), true);
 }
 
 pub fn delete_file(disks: &[String]) {
@@ -131,7 +175,7 @@ pub fn delete_file(disks: &[String]) {
         .output()
         .expect("failed delete test file");
 
-    assert_eq!(output.status.success(), true);
+    m_assert_eq!(output.status.success(), true);
 }
 
 pub fn compare_files(a: &str, b: &str) {
@@ -142,7 +186,7 @@ pub fn compare_files(a: &str, b: &str) {
 
     io::stdout().write_all(&output.stderr).unwrap();
     io::stdout().write_all(&output.stdout).unwrap();
-    assert_eq!(output.status.success(), true);
+    m_assert_eq!(output.status.success(), true);
 }
 
 pub fn mount_umount(device: &str) -> String {
@@ -158,6 +202,7 @@ pub fn mount_umount(device: &str) -> String {
     )
     .unwrap();
     if exit != 0 {
+		print_dmesg();
         panic!("Script failed with error: {}", stderr);
     }
     stdout
@@ -183,6 +228,7 @@ pub fn mount_and_write_file(device: &str) -> String {
     )
     .unwrap();
     if exit != 0 {
+		print_dmesg();
         panic!("Script failed with error: {}", stderr);
     }
     stdout.trim_end().to_string()
@@ -245,7 +291,7 @@ pub fn dd_urandom_blkdev(device: &str) -> String {
     &run_script::ScriptOptions::new(),
     )
     .unwrap();
-    assert_eq!(exit, 0);
+    m_assert_eq!(exit, 0);
     stdout
 }
 
@@ -267,7 +313,7 @@ pub fn compare_nexus_device(
         &run_script::ScriptOptions::new(),
     )
     .unwrap();
-    assert_eq!(exit, 0);
+    m_assert_eq!(exit, 0);
     stdout
 }
 
@@ -289,6 +335,6 @@ pub fn compare_devices(
         &run_script::ScriptOptions::new(),
     )
     .unwrap();
-    assert_eq!(exit, 0, "stdout: {}\nstderr: {}", stdout, stderr);
+    m_assert_eq!(exit, 0, "stdout: {}\nstderr: {}", stdout, stderr);
     stdout
 }
