@@ -1,4 +1,4 @@
-use std::{env, io, io::Write, process::Command};
+use std::{env, io, io::Write, process::Command, str};
 
 use once_cell::sync::OnceCell;
 use run_script::{self, ScriptOptions};
@@ -109,9 +109,13 @@ pub fn mayastor_test_init() {
 
 pub fn print_dmesg() {
     let output = Command::new("dmesg")
+        .args( &["-T"])
         .output()
         .expect("failed get kernel logs");
-    println!("{:?}", output);
+    let stdout = str::from_utf8(&output.stdout).unwrap();
+    let stderr = str::from_utf8(&output.stderr).unwrap();
+    println!("stdout: {}", stdout);
+    println!("stderr: {}", stderr);
 }
 
 pub fn dd_random_file(path: &str, bs: u32, size: u64) {
