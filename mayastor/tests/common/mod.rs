@@ -249,6 +249,7 @@ pub fn mount_and_get_md5(device: &str) -> String {
     )
     .unwrap();
     if exit != 0 {
+        print_dmesg();
         panic!("Script failed with error: {}", stderr);
     }
     stdout
@@ -265,7 +266,7 @@ pub fn fio_run_verify(device: &str) -> String {
     &run_script::ScriptOptions::new(),
     )
         .unwrap();
-    assert_eq!(exit, 0);
+    m_assert_eq!(exit, 0);
     stdout
 }
 
