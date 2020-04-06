@@ -270,6 +270,7 @@ pub fn fio_run_verify(device: &str) -> String {
     &run_script::ScriptOptions::new(),
     )
         .unwrap();
+    log::info!("Testing exit...");
     m_assert_eq!(exit, 0);
     stdout
 }
@@ -296,6 +297,7 @@ pub fn dd_urandom_blkdev(device: &str) -> String {
     &run_script::ScriptOptions::new(),
     )
     .unwrap();
+    log::info!("Testing exit!");
     m_assert_eq!(exit, 0);
     stdout
 }

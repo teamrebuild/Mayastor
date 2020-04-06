@@ -48,6 +48,7 @@ async fn rebuild_test_start() {
         s.send(common::dd_urandom_blkdev(&nexus_device))
     });
     reactor_poll!(r);
+    log::info!("Finished polling the reactor!");
 
     let nexus_device = device.clone();
     let (s, r) = unbounded::<String>();

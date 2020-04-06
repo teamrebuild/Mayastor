@@ -119,6 +119,7 @@ fn mount_fs_1() {
         });
 
         reactor_poll!(r);
+        log::info!("Finished polling the reactor!");
         nexus.destroy().await;
     });
 }
@@ -139,6 +140,7 @@ fn mount_fs_2() {
 
         std::thread::spawn(move || s.send(common::fio_run_verify(&device)));
         reactor_poll!(r);
+        log::info!("Finished polling the reactor!");
         nexus.destroy().await;
     });
 
