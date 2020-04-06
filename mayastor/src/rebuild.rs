@@ -187,10 +187,9 @@ impl RebuildJob {
             return Err(RebuildError::InvalidParameters {});
         };
 
-        let segment_size = SEGMENT_SIZE;
         // validation passed, block size is the same for both
         let block_size = destination_hdl.get_bdev().block_len() as u64;
-        let segment_size_blks = (segment_size / block_size) as u64;
+        let segment_size_blks = (SEGMENT_SIZE / block_size) as u64;
 
         let mut tasks = RebuildTasks {
             buffers: Vec::new(),
@@ -235,8 +234,8 @@ impl RebuildJob {
     }
 
     // Runs the management async task that kicks off N rebuild copy tasks and
-    // awaits each completion before kicking off more tasks until the
-    // bdev is fully rebuilt
+    // awaits each completion. When any task completes it kicks off another
+    // until the bdev is fully rebuilt
     async fn run(&mut self) {
         self.change_state(RebuildState::Running);
         self.next = self.start;
@@ -250,6 +249,10 @@ impl RebuildJob {
                         if self.state == RebuildState::Stopped
                             || self.state == RebuildState::Paused
                         {
+                            // await all active tasks as we might still have
+                            // ongoing IO do we need
+                            // a timeout?
+                            self.await_all_tasks().await;
                             break;
                         }
 
@@ -258,8 +261,6 @@ impl RebuildJob {
                     Some(e) => {
                         error!("Failed to rebuild segment id {} block {} with error: {}", r.id, r.blk, e);
                         self.change_state(RebuildState::Failed);
-                        // await all active tasks as we might still have ongoing
-                        // IO do we need a timeout?
                         self.await_all_tasks().await;
                         break;
                     }
@@ -286,16 +287,16 @@ impl RebuildJob {
     async fn copy_one(
         &mut self,
         id: u64,
-        current: u64,
+        blk: u64,
     ) -> Result<(), RebuildError> {
         let mut copy_buffer: DmaBuf;
 
-        let mut copy_buffer = if (current + self.segment_size_blks) > self.end {
-            let segment_size_blks = self.end - current;
+        let mut copy_buffer = if (blk + self.segment_size_blks) > self.end {
+            let segment_size_blks = self.end - blk;
 
             trace!(
                     "Adjusting last segment size from {} to {}. offset: {}, start: {}, end: {}",
-                    self.segment_size_blks, segment_size_blks, current, self.start, self.end,
+                    self.segment_size_blks, segment_size_blks, blk, self.start, self.end,
                 );
 
             copy_buffer = self
@@ -309,14 +310,14 @@ impl RebuildJob {
         };
 
         self.source_hdl
-            .read_at(current * self.block_size, &mut copy_buffer)
+            .read_at(blk * self.block_size, &mut copy_buffer)
             .await
             .context(IoError {
                 bdev: &self.source,
             })?;
 
         self.destination_hdl
-            .write_at(current * self.block_size, &copy_buffer)
+            .write_at(blk * self.block_size, &copy_buffer)
             .await
             .context(IoError {
                 bdev: &self.destination,
@@ -457,12 +458,13 @@ impl RebuildJob {
 
         for n in 0 .. self.tasks.total {
             self.next = match self.send_segment_task(n) {
-                Some(next) => next,
+                Some(next) => {
+                    self.tasks.active += 1;
+                    next
+                }
                 None => break, /* we've already got enough tasks to rebuild
                                 * the bdev */
             };
-
-            self.tasks.active += 1;
         }
     }
 
