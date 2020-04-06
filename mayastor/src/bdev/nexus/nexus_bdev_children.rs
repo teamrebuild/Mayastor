@@ -232,6 +232,7 @@ impl Nexus {
                     child: name.to_owned(),
                     name: self.name.clone(),
                 })?;
+                child.state = ChildState::Faulted;
                 let nexus_state = self.set_state(NexusState::Degraded);
                 self.start_rebuild(name).await?;
                 Ok(nexus_state)
