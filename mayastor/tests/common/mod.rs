@@ -108,15 +108,15 @@ pub fn mayastor_test_init() {
 }
 
 pub fn print_dmesg() {
-    let output = Command::new("dmesg")
-        .args( &["-T"])
-        .output()
-        .expect("failed get kernel logs");
-    let stdout = str::from_utf8(&output.stdout).unwrap();
-    let stderr = str::from_utf8(&output.stderr).unwrap();
-    log::info!("Dumping the kernel logs");
-    println!("stdout: {}", stdout);
-    println!("stderr: {}", stderr);
+    // let output = Command::new("dmesg")
+    //     .args( &["-T"])
+    //     .output()
+    //     .expect("failed get kernel logs");
+    // let stdout = str::from_utf8(&output.stdout).unwrap();
+    // let stderr = str::from_utf8(&output.stderr).unwrap();
+    // log::info!("Dumping the kernel logs");
+    // println!("stdout: {}", stdout);
+    // println!("stderr: {}", stderr);
 }
 
 pub fn dd_random_file(path: &str, bs: u32, size: u64) {

@@ -715,6 +715,10 @@ impl Nexus {
             })
             .collect::<Vec<_>>();
 
+        if io.offset() == 0xDDC0 {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+
         // if any of the children failed to dispatch
         if results.iter().any(|r| *r != 0) {
             error!(
