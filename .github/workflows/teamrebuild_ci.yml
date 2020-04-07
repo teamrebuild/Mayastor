@@ -54,6 +54,7 @@ jobs:
       - name: End
         run: |
           docker kill "nix"
+          cat error # make it easy to restart tests
 
   linter:
     runs-on: ubuntu-latest
