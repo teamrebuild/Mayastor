@@ -1,5 +1,5 @@
 # must pass before push to master
-status = ["Build"]
+status = ["Build and run tests"]
 # must pass before staging
 pr_status = ["Clippy", "Prettier"]
 # dont want merge commits do we?
