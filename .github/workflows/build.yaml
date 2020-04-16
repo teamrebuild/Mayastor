@@ -6,8 +6,8 @@ on:
       - trying
       - ci-*
 jobs:
-  Build:
-    name: Build and run tests
+  Build and run tests:
+    name: Build
     runs-on: ubuntu-latest
     container:
       image: docker.io/mayadata/ms-buildenv:nix
