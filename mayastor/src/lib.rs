@@ -20,7 +20,7 @@ pub mod pool;
 pub mod replicas;
 pub mod target;
 
-pub use replicas::{rebuild, replica};
+pub use replicas::{io_arbiter, rebuild, replica};
 
 #[macro_export]
 macro_rules! CPS_INIT {
