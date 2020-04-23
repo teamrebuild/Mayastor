@@ -382,7 +382,7 @@ impl Nexus {
             share_handle: None,
             size,
             nexus_target: None,
-            io_arbiter: IoArbiter::new(),
+            io_arbiter: IoArbiter::new(size),
         });
 
         n.bdev.set_uuid(match uuid {
@@ -497,6 +497,7 @@ impl Nexus {
             })?;
         }
 
+        self.io_arbiter.set_blk_size(self.bdev.block_len());
         Ok(())
     }
 
@@ -659,7 +660,9 @@ impl Nexus {
             pio.ctx_as_mut_ref().status = io_status::FAILED;
         }
         pio.assess();
-        pio.nexus_as_ref().io_arbiter.unregister();
+        pio.nexus_as_ref()
+            .io_arbiter
+            .unlock(pio.offset(), pio.num_blocks());
         // always free the child IO
         Bio::io_free(child_io);
     }
@@ -736,7 +739,7 @@ impl Nexus {
     ) -> i32 {
         let io = Bio(pio);
         let nexus = io.nexus_as_ref();
-        nexus.io_arbiter.register();
+        nexus.io_arbiter.lock(io.offset(), io.num_blocks());
         unsafe {
             spdk_bdev_readv_blocks(
                 desc,
@@ -758,7 +761,12 @@ impl Nexus {
         channels: &NexusChannelInner,
     ) {
         let mut io = Bio(pio);
-        io.nexus_as_ref().io_arbiter.register();
+
+        println!("IO SIZE: offset: {}, len: {}", io.offset(), io.num_blocks());
+
+        io.nexus_as_ref()
+            .io_arbiter
+            .lock(io.offset(), io.num_blocks());
         // in case of writes, we want to write to all underlying children
         io.ctx_as_mut_ref().in_flight = channels.ch.len() as i8;
         let results = channels
@@ -795,7 +803,9 @@ impl Nexus {
         channels: &NexusChannelInner,
     ) {
         let mut io = Bio(pio);
-        io.nexus_as_ref().io_arbiter.register();
+        io.nexus_as_ref()
+            .io_arbiter
+            .lock(io.offset(), io.num_blocks());
         io.ctx_as_mut_ref().in_flight = channels.ch.len() as i8;
         let results = channels
             .ch
