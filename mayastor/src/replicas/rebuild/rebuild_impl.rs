@@ -463,7 +463,7 @@ impl RebuildJob {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct RebuildStates {
     /// Current state of the rebuild job
     pub current: RebuildState,
@@ -478,12 +478,9 @@ impl std::fmt::Display for RebuildStates {
     }
 }
 
-impl Default for RebuildStates {
+impl Default for RebuildState {
     fn default() -> Self {
-        Self {
-            current: RebuildState::Init,
-            pending: None,
-        }
+        RebuildState::Init
     }
 }
 
@@ -592,15 +589,17 @@ impl RebuildJob {
                         self.states
                             .set_pending(S::Stopped, override_pending)?;
 
-                        // The rebuild is not running so we need to notify here
-                        self.notify();
+                        // The rebuild is not running so we need to reconcile
+                        self.reconcile();
                         Ok(())
                     }
                 }
             }
             RebuildOperation::Pause => match self.state() {
                 S::Stopped | S::Failed | S::Completed => Err(e),
-                S::Init | S::Running | S::Paused => {
+                // for idempotence sake
+                S::Paused => Ok(()),
+                S::Init | S::Running => {
                     self.states.set_pending(S::Paused, false)?;
                     Ok(())
                 }
@@ -617,7 +616,9 @@ impl RebuildJob {
             },
             RebuildOperation::Fail => match self.state() {
                 S::Init | S::Stopped | S::Paused | S::Completed => Err(e),
-                S::Running | S::Failed => {
+                // for idempotence sake
+                S::Failed => Ok(()),
+                S::Running => {
                     self.states.set_pending(S::Failed, override_pending)?;
                     Ok(())
                 }

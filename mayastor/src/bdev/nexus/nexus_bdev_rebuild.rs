@@ -81,7 +81,7 @@ impl Nexus {
     /// Terminates a rebuild in the background
     /// used for shutdown operations and
     /// unlike the client operation stop, this command does not fail
-    /// as it skips previous client operations
+    /// as it overrides the previous client operations
     fn terminate_rebuild(&self, name: &str) {
         // If a rebuild job is not found that's ok
         // as we were just going to remove it anyway.
