@@ -17,6 +17,7 @@ use crate::{
     },
     core::{Bdev, BdevHandle, CoreError, Descriptor, DmaBuf, DmaError},
     nexus_uri::{bdev_destroy, BdevCreateDestroy},
+    rebuild::{ClientOperations, RebuildJob},
 };
 
 #[derive(Debug, Snafu)]
@@ -73,6 +74,48 @@ pub enum ChildIoError {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+pub(crate) enum ChildStatus {
+    /// available for RW
+    Online,
+    /// temporarily unavailable for RW, out of sync with nexus (needs rebuild)
+    Degraded,
+    /// permanently unavailable for RW
+    Faulted,
+}
+
+#[derive(Debug, Serialize, Default)]
+struct StatusReasons {
+    /// Degraded
+    /// needs to be rebuilt
+    out_of_sync: bool,
+
+    /// Faulted
+    fatal_error: bool,
+}
+
+impl StatusReasons {
+    #[allow(dead_code)]
+    fn fatal_error(&mut self) {
+        self.fatal_error = true;
+    }
+
+    /// out of sync with nexus, needs a rebuild
+    fn out_of_sync(&mut self, out_of_sync: bool) {
+        self.out_of_sync = out_of_sync;
+    }
+
+    pub fn status(&self) -> ChildStatus {
+        if self.fatal_error {
+            ChildStatus::Faulted
+        } else if self.out_of_sync {
+            ChildStatus::Degraded
+        } else {
+            ChildStatus::Online
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
 pub(crate) enum ChildState {
     /// child has not been opened, but we are in the process of opening it
     Init,
@@ -80,10 +123,8 @@ pub(crate) enum ChildState {
     ConfigInvalid,
     /// the child is open for RW
     Open,
-    /// The child has been closed by its parent
+    /// unusable by the nexus for RW
     Closed,
-    /// a non-fatal have occurred on this child
-    Faulted,
 }
 
 impl ToString for ChildState {
@@ -92,7 +133,6 @@ impl ToString for ChildState {
             ChildState::Init => "init",
             ChildState::ConfigInvalid => "configInvalid",
             ChildState::Open => "open",
-            ChildState::Faulted => "faulted",
             ChildState::Closed => "closed",
         }
         .parse()
@@ -100,32 +140,15 @@ impl ToString for ChildState {
     }
 }
 
-/// Because the child states are kept separately from the rebuild states,
-/// when a rebuild is ongoing there are two states
-/// associated with the destination child:
-///     Rebuilding - from the rebuild job
-///     Faulted - from the child state
-/// The control plane doesn't require fine grained state information
-/// The required states are:
-///     Online
-///     Faulted
-///     Rebuilding
-/// so here we inject a "rebuilding" state into the ChildState
-impl ChildState {
-    /// Converts an internal mayastor child state into a simplified public state
-    /// visible outside of mayastor
-    pub(crate) fn to_public(self, rebuilding: bool) -> String {
-        match self {
-            ChildState::Init => "rebuilding",
-            ChildState::ConfigInvalid => "faulted",
-            ChildState::Open | ChildState::Faulted if rebuilding => {
-                "rebuilding"
-            }
-            ChildState::Open => "online",
-            ChildState::Faulted => "faulted",
-            ChildState::Closed => "faulted",
+impl ToString for ChildStatus {
+    fn to_string(&self) -> String {
+        match *self {
+            ChildStatus::Degraded => "degraded",
+            ChildStatus::Faulted => "faulted",
+            ChildStatus::Online => "online",
         }
-        .to_string()
+        .parse()
+        .unwrap()
     }
 }
 
@@ -146,6 +169,7 @@ pub struct NexusChild {
     pub(crate) desc: Option<Arc<Descriptor>>,
     /// current state of the child
     pub(crate) state: ChildState,
+    status_reasons: StatusReasons,
     /// descriptor obtained after opening a device
     #[serde(skip_serializing)]
     pub(crate) bdev_handle: Option<BdevHandle>,
@@ -157,14 +181,21 @@ impl Display for NexusChild {
             let bdev = self.bdev.as_ref().unwrap();
             writeln!(
                 f,
-                "{}: {:?}, blk_cnt: {}, blk_size: {}",
+                "{}: {:?}/{:?}, blk_cnt: {}, blk_size: {}",
                 self.name,
                 self.state,
+                self.status(),
                 bdev.num_blocks(),
                 bdev.block_len(),
             )
         } else {
-            writeln!(f, "{}: state {:?}", self.name, self.state)
+            writeln!(
+                f,
+                "{}: state {:?}/{:?}",
+                self.name,
+                self.state,
+                self.status()
+            )
         }
     }
 }
@@ -219,6 +250,19 @@ impl NexusChild {
         Ok(self.name.clone())
     }
 
+    pub fn out_of_sync(&mut self, out_of_sync: bool) {
+        self.status_reasons.out_of_sync(out_of_sync);
+    }
+
+    pub(crate) fn status(&self) -> ChildStatus {
+        match self.state {
+            ChildState::Init => ChildStatus::Degraded,
+            ChildState::ConfigInvalid => ChildStatus::Faulted,
+            ChildState::Open => self.status_reasons.status(),
+            ChildState::Closed => ChildStatus::Faulted,
+        }
+    }
+
     /// return a descriptor to this child
     pub fn get_descriptor(&self) -> Result<Arc<Descriptor>, CoreError> {
         if let Some(ref d) = self.desc {
@@ -262,6 +306,7 @@ impl NexusChild {
             desc: None,
             ch: std::ptr::null_mut(),
             state: ChildState::Init,
+            status_reasons: Default::default(),
             bdev_handle: None,
         }
     }
@@ -280,7 +325,7 @@ impl NexusChild {
 
     /// returns if a child can be written to
     pub fn can_rw(&self) -> bool {
-        self.state == ChildState::Open || self.state == ChildState::Faulted
+        self.state == ChildState::Open && self.status() != ChildStatus::Faulted
     }
 
     /// read and validate this child's label
@@ -483,5 +528,19 @@ impl NexusChild {
                 name: self.name.clone(),
             }),
         }
+    }
+
+    /// Return the rebuild job which is rebuilding this child, if rebuilding
+    fn get_rebuild_job(&self) -> Option<&mut RebuildJob> {
+        let job = RebuildJob::lookup(&self.name).ok()?;
+        assert_eq!(job.nexus, self.parent);
+        Some(job)
+    }
+
+    /// Return the rebuild progress on this child, if rebuilding
+    pub fn get_rebuild_progress(&self) -> i64 {
+        self.get_rebuild_job()
+            .map(|j| j.stats().progress as i64)
+            .unwrap_or_else(|| -1)
     }
 }
