@@ -7,6 +7,7 @@ use snafu::{ResultExt, Snafu};
 use spdk_sys::spdk_get_thread;
 use std::{cell::UnsafeCell, collections::HashMap, fmt};
 
+use crate::replicas::io_arbiter::IoArbiter;
 use futures::{channel::mpsc, StreamExt};
 
 /// Global list of rebuild jobs using a static OnceCell
@@ -129,6 +130,8 @@ pub struct RebuildJob {
     pub complete_chan: (Sender<RebuildState>, Receiver<RebuildState>),
     /// current state of the rebuild job
     pub state: RebuildState,
+    /// I/O Arbiter
+    io_arbiter: IoArbiter,
 }
 
 /// Place holder for rebuild statistics
@@ -272,6 +275,8 @@ impl RebuildJob {
             nexus.to_string(),
         );
 
+        let io_arbiter = IoArbiter::new(&nexus);
+
         Ok(Self {
             nexus,
             source,
@@ -287,6 +292,7 @@ impl RebuildJob {
             complete_fn,
             complete_chan: unbounded::<RebuildState>(),
             state: RebuildState::Pending,
+            io_arbiter,
         })
     }
 
@@ -366,6 +372,11 @@ impl RebuildJob {
             &mut self.tasks.buffers[id as usize]
         };
 
+        let mut ctx = self
+            .io_arbiter
+            .lock(blk, copy_buffer.len() as u64 / self.block_size)
+            .await;
+
         self.source_hdl
             .read_at(blk * self.block_size, &mut copy_buffer)
             .await
@@ -380,6 +391,7 @@ impl RebuildJob {
                 bdev: &self.destination,
             })?;
 
+        self.io_arbiter.unlock(&mut ctx).await;
         Ok(())
     }
 

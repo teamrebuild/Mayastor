@@ -48,7 +48,6 @@ use crate::{
     },
     core::{Bdev, DmaBuf, DmaError},
     ffihelper::errno_result_from_i32,
-    io_arbiter::IoArbiter,
     jsonrpc::{Code, RpcErrorCode},
     nexus_uri::BdevCreateDestroy,
     rebuild::RebuildError,
@@ -303,8 +302,6 @@ pub struct Nexus {
     pub(crate) share_handle: Option<String>,
     /// enum containing the protocol-specific target used to publish the nexus
     pub nexus_target: Option<NexusTarget>,
-    /// I/O Arbiter
-    pub io_arbiter: IoArbiter,
 }
 
 unsafe impl core::marker::Sync for Nexus {}
@@ -382,7 +379,6 @@ impl Nexus {
             share_handle: None,
             size,
             nexus_target: None,
-            io_arbiter: IoArbiter::new(size),
         });
 
         n.bdev.set_uuid(match uuid {
@@ -497,7 +493,6 @@ impl Nexus {
             })?;
         }
 
-        self.io_arbiter.set_blk_size(self.bdev.block_len());
         Ok(())
     }
 
@@ -660,9 +655,6 @@ impl Nexus {
             pio.ctx_as_mut_ref().status = io_status::FAILED;
         }
         pio.assess();
-        pio.nexus_as_ref()
-            .io_arbiter
-            .unlock(pio.offset(), pio.num_blocks());
         // always free the child IO
         Bio::io_free(child_io);
     }
@@ -739,7 +731,6 @@ impl Nexus {
     ) -> i32 {
         let io = Bio(pio);
         let nexus = io.nexus_as_ref();
-        nexus.io_arbiter.lock(io.offset(), io.num_blocks());
         unsafe {
             spdk_bdev_readv_blocks(
                 desc,
@@ -764,9 +755,6 @@ impl Nexus {
 
         println!("IO SIZE: offset: {}, len: {}", io.offset(), io.num_blocks());
 
-        io.nexus_as_ref()
-            .io_arbiter
-            .lock(io.offset(), io.num_blocks());
         // in case of writes, we want to write to all underlying children
         io.ctx_as_mut_ref().in_flight = channels.ch.len() as i8;
         let results = channels
@@ -803,9 +791,6 @@ impl Nexus {
         channels: &NexusChannelInner,
     ) {
         let mut io = Bio(pio);
-        io.nexus_as_ref()
-            .io_arbiter
-            .lock(io.offset(), io.num_blocks());
         io.ctx_as_mut_ref().in_flight = channels.ch.len() as i8;
         let results = channels
             .ch

@@ -21,8 +21,8 @@ stdenv.mkDerivation rec {
   src = fetchFromGitHub {
     owner = "openebs";
     repo = "spdk";
-    rev = "79aca9f7ba5e5744c7012218b18d8a5e182702f3";
-    sha256 = "16bpgfdk3ab3vy5m76f2aj5rm4b8rypn1w7699pmm7lsrfb36z69";
+    rev = "b3188258a448caa45aeadfa4a865fda4faaee7ce";
+    sha256 = "1jcblczlinaa0y7cyxqi2l4rfk6gc1gdzwi4d4lnv8lj2r8hgm6p";
     fetchSubmodules = true;
   };
 
