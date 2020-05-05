@@ -1,4 +1,6 @@
-use std::{env, io, io::Write, process::Command};
+use crossbeam::channel::{after, select, unbounded};
+use log::info;
+use std::{env, io, io::Write, process::Command, time::Duration};
 
 use once_cell::sync::OnceCell;
 use run_script::{self, ScriptOptions};
@@ -6,9 +8,9 @@ use run_script::{self, ScriptOptions};
 use mayastor::{
     core::{MayastorEnvironment, Mthread},
     logger,
+    rebuild::{RebuildJob, RebuildState},
 };
 use spdk_sys::spdk_get_thread;
-use std::time::Duration;
 
 pub mod ms_exec;
 /// call F cnt times, and sleep for a duration between each invocation
@@ -52,6 +54,12 @@ macro_rules! reactor_poll {
             if $ch.try_recv().is_ok() {
                 break;
             }
+        }
+        mayastor::core::Reactors::current().thread_enter();
+    };
+    ($n:expr) => {
+        for _ in 0 .. $n {
+            mayastor::core::Reactors::current().poll_once();
         }
         mayastor::core::Reactors::current().thread_enter();
     };
@@ -111,6 +119,15 @@ pub fn dd_random_file(path: &str, bs: u32, size: u64) {
 pub fn truncate_file(path: &str, size: u64) {
     let output = Command::new("truncate")
         .args(&["-s", &format!("{}m", size / 1024), path])
+        .output()
+        .expect("failed exec truncate");
+
+    assert_eq!(output.status.success(), true);
+}
+
+pub fn truncate_file_bytes(path: &str, size: u64) {
+    let output = Command::new("truncate")
+        .args(&["-s", &format!("{}", size), path])
         .output()
         .expect("failed exec truncate");
 
@@ -314,4 +331,31 @@ pub fn compare_devices(
     .unwrap();
     assert_eq!(exit, 0, "stdout: {}\nstderr: {}", stdout, stderr);
     stdout
+}
+
+/// Waits for the rebuild to reach `state`, up to `timeout`
+pub fn wait_for_rebuild(name: String, state: RebuildState, timeout: Duration) {
+    let (s, r) = unbounded::<()>();
+    let job = match RebuildJob::lookup(&name) {
+        Ok(job) => job,
+        Err(_) => return,
+    };
+
+    let ch = job.notify_chan.1.clone();
+    std::thread::spawn(move || {
+        let now = std::time::Instant::now();
+        while {
+            let current_state = select! {
+                recv(ch) -> state => {
+                    info!("rebuild of child {} signalled with state {:?}", name, state);
+                    state.unwrap()
+                },
+                recv(after(timeout - now.elapsed())) -> _ => panic!("timed out waiting for the rebuild to complete after {:?}", timeout),
+            };
+
+            current_state != state
+        } {}
+        s.send(())
+    });
+    reactor_poll!(r);
 }

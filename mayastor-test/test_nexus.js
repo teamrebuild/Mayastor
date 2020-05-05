@@ -154,8 +154,8 @@ var doUring = (function () {
 
 describe('nexus', function () {
   var client;
-  var nbd_device;
-  var iscsi_uri;
+  var nbdDevice;
+  var iscsiUri;
 
   const unpublish = (args) => {
     return new Promise((resolve, reject) => {
@@ -265,11 +265,18 @@ describe('nexus', function () {
         common.stopAll,
         common.restoreNbdPerms,
         (next) => {
-          fs.unlink(aioFile, (err) => next());
+          fs.unlink(aioFile, (err) => {
+            if (err) console.log('unlink failed:', aioFile, err);
+            next();
+          });
         },
         (next) => {
-          if (doUring()) fs.unlink(uringFile, (err) => next());
-          else next();
+          if (doUring()) {
+            fs.unlink(uringFile, (err) => {
+              if (err) console.log('unlink failed:', uringFile, err);
+              next();
+            });
+          } else next();
         }
       ],
       (err) => {
@@ -309,25 +316,25 @@ describe('nexus', function () {
       assert.equal(nexus.state, 'online');
       assert.lengthOf(nexus.children, expectedChildren);
       assert.equal(nexus.children[0].uri, 'bdev:///Malloc0');
-      assert.equal(nexus.children[0].state, 'open');
+      assert.equal(nexus.children[0].state, 'online');
       assert.equal(nexus.children[1].uri, `aio:///${aioFile}?blk_size=4096`);
-      assert.equal(nexus.children[1].state, 'open');
+      assert.equal(nexus.children[1].state, 'online');
       assert.equal(
         nexus.children[2].uri,
         `iscsi://${externIp}:3261/iqn.2019-05.io.openebs:disk1`
       );
-      assert.equal(nexus.children[2].state, 'open');
+      assert.equal(nexus.children[2].state, 'online');
       assert.equal(
         nexus.children[3].uri,
         'nvmf://127.0.0.1:8420/nqn.2019-05.io.openebs:disk2'
       );
-      assert.equal(nexus.children[3].state, 'open');
+      assert.equal(nexus.children[3].state, 'online');
       if (doUring()) {
         assert.equal(
           nexus.children[4].uri,
           `uring:///${uringFile}?blk_size=4096`
         );
-        assert.equal(nexus.children[4].state, 'open');
+        assert.equal(nexus.children[4].state, 'online');
       }
       done();
     });
@@ -410,9 +417,13 @@ describe('nexus', function () {
         share: enums.NEXUS_NBD
       },
       (err, res) => {
-        assert(res.device_path);
-        nbd_device = res.device_path;
-        done();
+        if (err) {
+          done(err);
+        } else {
+          assert(res.device_path);
+          nbdDevice = res.device_path;
+          done();
+        }
       }
     );
   });
@@ -432,16 +443,20 @@ describe('nexus', function () {
         key: '0123456789123456'
       },
       (err, res) => {
-        assert(res.device_path);
-        nbd_device = res.device_path;
-        done();
+        if (err) {
+          done(err);
+        } else {
+          assert(res.device_path);
+          nbdDevice = res.device_path;
+          done();
+        }
       }
     );
   });
 
   it('should be able to write to the NBD device', async () => {
     const fs = require('fs').promises;
-    const fd = await fs.open(nbd_device, 'w', 666);
+    const fd = await fs.open(nbdDevice, 'w', 666);
     const buffer = Buffer.alloc(512, 'z', 'utf8');
     await fd.write(buffer, 0, 512);
     await fd.sync();
@@ -450,7 +465,7 @@ describe('nexus', function () {
 
   it('should be able to read the written data back', async () => {
     const fs = require('fs').promises;
-    const fd = await fs.open(nbd_device, 'r', 666);
+    const fd = await fs.open(nbdDevice, 'r', 666);
     const buffer = Buffer.alloc(512, 'a', 'utf8');
     await fd.read(buffer, 0, 512);
     await fd.close();
@@ -474,8 +489,12 @@ describe('nexus', function () {
         share: enums.NEXUS_ISCSI
       },
       (err, res) => {
-        assert(res.device_path);
-        done();
+        if (err) {
+          done(err);
+        } else {
+          assert(res.device_path);
+          done();
+        }
       }
     );
   });
@@ -494,8 +513,12 @@ describe('nexus', function () {
         share: enums.NEXUS_ISCSI
       },
       (err, res) => {
-        assert(res.device_path);
-        done();
+        if (err) {
+          done(err);
+        } else {
+          assert(res.device_path);
+          done();
+        }
       }
     );
   });
@@ -550,15 +573,19 @@ describe('nexus', function () {
         key: '0123456789123456'
       },
       (err, res) => {
-        assert(res.device_path);
-        iscsi_uri = res.device_path;
-        done();
+        if (err) {
+          done(err);
+        } else {
+          assert(res.device_path);
+          iscsiUri = res.device_path;
+          done();
+        }
       }
     );
   });
 
   it('should send io to the iscsi nexus device', (done) => {
-    const uri = iscsi_uri + '/0';
+    const uri = iscsiUri;
     // runs the perf test for 1 second
     exec('iscsi-perf -t 1 ' + uri, (err, stdout, stderr) => {
       if (err) {

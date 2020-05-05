@@ -12,7 +12,7 @@ use spdk_sys::{
 };
 
 use crate::{
-    bdev::nexus::{nexus_child::ChildState, Nexus},
+    bdev::nexus::{nexus_child::ChildStatus, Nexus},
     core::BdevHandle,
 };
 
@@ -40,6 +40,8 @@ pub enum DREvent {
     ChildOnline,
     /// mark the child as faulted
     ChildFault,
+    /// Child remove reconfiguration event
+    ChildRemove,
 }
 
 impl NexusChannelInner {
@@ -82,7 +84,7 @@ impl NexusChannelInner {
         nexus
             .children
             .iter_mut()
-            .filter(|c| c.state == ChildState::Open)
+            .filter(|c| c.status() == ChildStatus::Online)
             .map(|c| {
                 self.ch.push(
                     BdevHandle::try_from(c.get_descriptor().unwrap()).unwrap(),
@@ -120,7 +122,7 @@ impl NexusChannel {
         nexus
             .children
             .iter_mut()
-            .filter(|c| c.state == ChildState::Open)
+            .filter(|c| c.status() == ChildStatus::Online)
             .map(|c| {
                 channels.ch.push(
                     BdevHandle::try_from(c.get_descriptor().unwrap()).unwrap(),
@@ -144,6 +146,7 @@ impl NexusChannel {
         match event {
             DREvent::ChildOffline
             | DREvent::ChildOnline
+            | DREvent::ChildRemove
             | DREvent::ChildFault => unsafe {
                 spdk_for_each_channel(
                     device,

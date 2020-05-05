@@ -5,13 +5,21 @@ use rpc::{
     service::mayastor_server::{Mayastor, MayastorServer},
 };
 
+use std::convert::From;
+
 use crate::{
     bdev::{
-        nexus::{instances, nexus_bdev, nexus_bdev::Nexus},
+        nexus::{
+            instances,
+            nexus_bdev,
+            nexus_bdev::Nexus,
+            nexus_child::NexusChild,
+        },
         nexus_create,
     },
     core::{Cores, Reactors},
     pool,
+    rebuild::RebuildJob,
     replica,
 };
 
@@ -39,6 +47,16 @@ macro_rules! locally {
         let hdl = Reactors::current().spawn_local($body);
         hdl.await.unwrap()?
     }};
+}
+
+impl From<&NexusChild> for Child {
+    fn from(child: &NexusChild) -> Self {
+        Child {
+            uri: child.name.clone(),
+            state: child.status().to_string(),
+            rebuild_progress: child.get_rebuild_progress(),
+        }
+    }
 }
 
 #[tonic::async_trait]
@@ -153,17 +171,14 @@ impl Mayastor for MayastorGrpc {
             .map(|n| rpc::mayastor::Nexus {
                 uuid: n.name.clone(),
                 size: n.size,
-                state: n.state.to_string(),
+                state: n.status().to_string(),
                 device_path: n.get_share_path().unwrap_or_default(),
                 children: n
                     .children
                     .iter()
-                    .map(|c| Child {
-                        uri: c.name.clone(),
-                        state: c.state.to_string(),
-                    })
+                    .map(Child::from)
                     .collect::<Vec<_>>(),
-                rebuilds: n.rebuilds.len() as u64,
+                rebuilds: RebuildJob::count() as u64,
             })
             .collect::<Vec<_>>();
 
@@ -287,6 +302,30 @@ impl Mayastor for MayastorGrpc {
         Ok(Response::new(Null {}))
     }
 
+    async fn pause_rebuild(
+        &self,
+        request: Request<PauseRebuildRequest>,
+    ) -> Result<Response<Null>> {
+        let msg = request.into_inner();
+        locally! { async move {
+          nexus_lookup(&msg.uuid)?.pause_rebuild(&msg.uri).await
+        }};
+
+        Ok(Response::new(Null {}))
+    }
+
+    async fn resume_rebuild(
+        &self,
+        request: Request<ResumeRebuildRequest>,
+    ) -> Result<Response<Null>> {
+        let msg = request.into_inner();
+        locally! { async move {
+          nexus_lookup(&msg.uuid)?.resume_rebuild(&msg.uri).await
+        }};
+
+        Ok(Response::new(Null {}))
+    }
+
     async fn get_rebuild_state(
         &self,
         request: Request<RebuildStateRequest>,
@@ -305,7 +344,7 @@ impl Mayastor for MayastorGrpc {
         let msg = request.into_inner();
 
         Ok(Response::new(locally! { async move {
-            nexus_lookup(&msg.uuid)?.get_rebuild_progress().await
+            nexus_lookup(&msg.uuid)?.get_rebuild_progress(&msg.uri)
         }}))
     }
 }

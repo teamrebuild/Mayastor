@@ -309,8 +309,8 @@ impl service::mayastor_server::Mayastor for MayastorService {
     ) -> Result<Response<Null>, Status> {
         let msg = request.into_inner();
         trace!("{:?}", msg);
-        jsonrpc::call::<_, ()>(&self.socket, "offline_child", Some(msg))
-            .await?;
+        let method = get_child_method_string(msg.action)?;
+        jsonrpc::call::<_, ()>(&self.socket, &method, Some(msg)).await?;
         Ok(Response::new(Null {}))
     }
 
@@ -357,6 +357,28 @@ impl service::mayastor_server::Mayastor for MayastorService {
         Ok(Response::new(Null {}))
     }
 
+    async fn pause_rebuild(
+        &self,
+        request: Request<PauseRebuildRequest>,
+    ) -> Result<Response<Null>, Status> {
+        let msg = request.into_inner();
+        trace!("{:?}", msg);
+        jsonrpc::call::<_, ()>(&self.socket, "pause_rebuild", Some(msg))
+            .await?;
+        Ok(Response::new(Null {}))
+    }
+
+    async fn resume_rebuild(
+        &self,
+        request: Request<ResumeRebuildRequest>,
+    ) -> Result<Response<Null>, Status> {
+        let msg = request.into_inner();
+        trace!("{:?}", msg);
+        jsonrpc::call::<_, ()>(&self.socket, "resume_rebuild", Some(msg))
+            .await?;
+        Ok(Response::new(Null {}))
+    }
+
     async fn get_rebuild_state(
         &self,
         request: Request<RebuildStateRequest>,
@@ -385,5 +407,16 @@ impl service::mayastor_server::Mayastor for MayastorService {
         )
         .await?;
         Ok(Response::new(r))
+    }
+}
+
+fn get_child_method_string(action: i32) -> Result<String, Status> {
+    match action {
+        0 => Ok("offline_child".to_string()),
+        1 => Ok("online_child".to_string()),
+        _ => Err(Status::invalid_argument(format!(
+            "{} is an invalid operation",
+            action
+        ))),
     }
 }

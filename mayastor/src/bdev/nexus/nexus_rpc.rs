@@ -9,11 +9,13 @@ use rpc::mayastor::{
     DestroyNexusRequest,
     ListNexusReply,
     Nexus as RpcNexus,
+    PauseRebuildRequest,
     PublishNexusReply,
     PublishNexusRequest,
     RebuildProgressRequest,
     RebuildStateRequest,
     RemoveChildNexusRequest,
+    ResumeRebuildRequest,
     ShareProtocolNexus,
     StartRebuildRequest,
     StopRebuildRequest,
@@ -26,6 +28,7 @@ use crate::{
         nexus_bdev::{nexus_create, Error, Nexus},
     },
     jsonrpc::jsonrpc_register,
+    rebuild::RebuildJob,
 };
 
 /// Convert the UUID to a nexus name in the form of "nexus-{uuid}".
@@ -75,17 +78,14 @@ pub(crate) fn register_rpc_methods() {
                 .map(|nexus| RpcNexus {
                     uuid: name_to_uuid(&nexus.name).to_string(),
                     size: nexus.size(),
-                    state: nexus.state.to_string(),
+                    state: nexus.status().to_string(),
                     children: nexus
                         .children
                         .iter()
-                        .map(|child| Child {
-                            uri: child.name.clone(),
-                            state: child.state.to_string(),
-                        })
+                        .map(Child::from)
                         .collect::<Vec<_>>(),
                     device_path: nexus.get_share_path().unwrap_or_default(),
-                    rebuilds: nexus.rebuilds.len() as u64,
+                    rebuilds: RebuildJob::count() as u64,
                 })
                 .collect::<Vec<_>>(),
         })
@@ -164,21 +164,29 @@ pub(crate) fn register_rpc_methods() {
         fut.boxed_local()
     });
 
-    jsonrpc_register("offline_child", |args: ChildNexusRequest| {
-        let fut = async move {
-            let nexus = nexus_lookup(&args.uuid)?;
-            nexus.offline_child(&args.uri).await
-        };
-        fut.boxed_local()
-    });
+    jsonrpc_register::<rpc::mayastor::ChildNexusRequest, _, _, Error>(
+        "offline_child",
+        |args: ChildNexusRequest| {
+            let fut = async move {
+                let nexus = nexus_lookup(&args.uuid)?;
+                nexus.offline_child(&args.uri).await?;
+                Ok(())
+            };
+            fut.boxed_local()
+        },
+    );
 
-    jsonrpc_register("online_child", |args: ChildNexusRequest| {
-        let fut = async move {
-            let nexus = nexus_lookup(&args.uuid)?;
-            nexus.online_child(&args.uri).await
-        };
-        fut.boxed_local()
-    });
+    jsonrpc_register::<rpc::mayastor::ChildNexusRequest, _, _, Error>(
+        "online_child",
+        |args: ChildNexusRequest| {
+            let fut = async move {
+                let nexus = nexus_lookup(&args.uuid)?;
+                nexus.online_child(&args.uri).await?;
+                Ok(())
+            };
+            fut.boxed_local()
+        },
+    );
 
     jsonrpc_register("add_child_nexus", |args: AddChildNexusRequest| {
         let fut = async move {
@@ -212,6 +220,22 @@ pub(crate) fn register_rpc_methods() {
         fut.boxed_local()
     });
 
+    jsonrpc_register("pause_rebuild", |args: PauseRebuildRequest| {
+        let fut = async move {
+            let nexus = nexus_lookup(&args.uuid)?;
+            nexus.pause_rebuild(&args.uri).await
+        };
+        fut.boxed_local()
+    });
+
+    jsonrpc_register("resume_rebuild", |args: ResumeRebuildRequest| {
+        let fut = async move {
+            let nexus = nexus_lookup(&args.uuid)?;
+            nexus.resume_rebuild(&args.uri).await
+        };
+        fut.boxed_local()
+    });
+
     jsonrpc_register("get_rebuild_state", |args: RebuildStateRequest| {
         let fut = async move {
             let nexus = nexus_lookup(&args.uuid)?;
@@ -223,7 +247,7 @@ pub(crate) fn register_rpc_methods() {
     jsonrpc_register("get_rebuild_progress", |args: RebuildProgressRequest| {
         let fut = async move {
             let nexus = nexus_lookup(&args.uuid)?;
-            nexus.get_rebuild_progress().await
+            nexus.get_rebuild_progress(&args.uri)
         };
         fut.boxed_local()
     });
