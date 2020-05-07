@@ -52,7 +52,9 @@ impl IoArbiter {
                 ctx.len,
                 rc
             );
+
             trace!("Lock start: offset {}, len {}", ctx.offset, ctx.len);
+
             let status = (*(ctx.receiver)).next().await.unwrap();
             assert!(
                 status == 0,
@@ -61,6 +63,7 @@ impl IoArbiter {
                 ctx.len,
                 status
             );
+
             trace!("Lock end: offset {}, len {}", ctx.offset, ctx.len);
         }
 
@@ -88,6 +91,7 @@ impl IoArbiter {
             );
 
             trace!("Unlock start: offset {}, len {}", ctx.offset, ctx.len);
+
             let status = (*(ctx.receiver)).next().await.unwrap();
             assert!(
                 status == 0,
@@ -96,6 +100,7 @@ impl IoArbiter {
                 ctx.len,
                 status
             );
+
             trace!("Unlock end: offset {}, len {}", ctx.offset, ctx.len);
         }
     }
