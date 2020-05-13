@@ -13,14 +13,16 @@ pub mod bdev;
 pub mod core;
 pub mod delay;
 pub mod ffihelper;
+pub mod grpc;
 pub mod jsonrpc;
 pub mod logger;
 pub mod nexus_uri;
 pub mod pool;
 pub mod replicas;
+pub mod subsys;
 pub mod target;
 
-pub use replicas::{io_arbiter, rebuild, replica};
+pub use replicas::{rebuild, replica};
 
 #[macro_export]
 macro_rules! CPS_INIT {
@@ -32,5 +34,6 @@ macro_rules! CPS_INIT {
 }
 
 pub extern "C" fn cps_init() {
+    subsys::register_subsystem();
     bdev::nexus::register_module();
 }

@@ -41,7 +41,7 @@ in
 
     mayastor = rustPlatform.buildRustPackage rec {
       name = "mayastor";
-      cargoSha256 = "08ck1g1d075k90g3jf3a0m71qhlkjbc7mbla537i0j7whwfnffck";
+      cargoSha256 = "0pb5j8wg741zhlv25ccbxyad8n4y87q1b36hq7817l41xjpsh2rh";
       version = "unstable";
       src = whitelistSource ../../../. [
         "Cargo.lock"
@@ -93,6 +93,11 @@ in
 
     env = pkgs.stdenv.lib.makeBinPath [ pkgs.busybox pkgs.utillinux pkgs.xfsprogs pkgs.e2fsprogs ];
 
+    mayastorIscsiadm = writeScriptBin "mayastor-iscsiadm" ''
+      #!${pkgs.stdenv.shell}
+      chroot /host /usr/bin/env -i PATH="/sbin:/bin:/usr/bin" iscsiadm "$@"
+    '';
+
     mayastorImage = pkgs.dockerTools.buildLayeredImage {
       name = "mayadata/mayastor";
       tag = "latest";
@@ -100,6 +105,7 @@ in
       contents = [ pkgs.busybox mayastor ];
       config = {
         Env = [ "PATH=${env}" ];
+        ExposedPorts = { "10124/tcp" = { }; };
         Entrypoint = [ "/bin/mayastor" ];
       };
     };
@@ -108,10 +114,9 @@ in
       name = "mayadata/mayastor-grpc";
       tag = "latest";
       created = "now";
-      contents = [ pkgs.busybox mayastor ];
+      contents = [ pkgs.busybox mayastor mayastorIscsiadm ];
       config = {
         Entrypoint = [ "/bin/mayastor-agent" ];
-        ExposedPorts = { "10124/tcp" = { }; };
         Env = [ "PATH=${env}" ];
       };
     };

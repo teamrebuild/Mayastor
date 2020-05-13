@@ -4,7 +4,7 @@ pub use ::uuid::Uuid;
 use nix::errno::Errno;
 use snafu::Snafu;
 
-pub use bdev::Bdev;
+pub use bdev::{Bdev, BdevIter};
 pub use channel::IoChannel;
 pub use cpu_cores::{Core, Cores};
 pub use descriptor::Descriptor;
@@ -67,6 +67,10 @@ pub enum CoreError {
         offset: u64,
         len: usize,
     },
+    #[snafu(display("Failed to dispatch reset",))]
+    ResetDispatch {
+        source: Errno,
+    },
     #[snafu(display("Write failed at offset {} length {}", offset, len))]
     WriteFailed {
         offset: u64,
@@ -77,4 +81,6 @@ pub enum CoreError {
         offset: u64,
         len: usize,
     },
+    #[snafu(display("Reset failed"))]
+    ResetFailed {},
 }

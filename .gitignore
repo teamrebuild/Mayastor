@@ -5,4 +5,6 @@
 /Dockerfile.debug
 /Dockerfile.release
 /.vagrant
+**/*.terraform
 **/*.tfstate*
+mayastor/local-randrw-0-verify.state

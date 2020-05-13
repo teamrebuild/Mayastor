@@ -8,7 +8,7 @@ variable "num_nodes" {
 
 resource "lxd_cached_image" "ubuntu" {
   source_remote = "ubuntu"
-  source_image  = "disco/amd64"
+  source_image  = "bionic/amd64"
 }
 
 variable "ssh_key" {
@@ -34,7 +34,7 @@ resource "lxd_container" "c8s" {
   image     = lxd_cached_image.ubuntu.fingerprint
   ephemeral = false
 
-  # be carefull with raw.lxc it has to be key=value\nkey=value
+  # be careful with raw.lxc it has to be key=value\nkey=value
 
   config = {
     "boot.autostart"       = true

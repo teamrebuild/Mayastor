@@ -15,7 +15,7 @@ use mayastor::{
         Reactor,
         Reactors,
     },
-    replicas::io_arbiter::IoArbiter,
+    replicas::rebuild::io_arbiter::IoArbiter,
 };
 use std::{thread::sleep, time::Duration};
 

@@ -8,6 +8,14 @@ const { GrpcCode, GrpcError } = require('./grpc_client');
 const log = require('./logger').Logger('pool');
 const Replica = require('./replica');
 
+const URI_REGEX = /^([a-z][a-z0-9+.-]+):\/\/(.+)$/g;
+
+// Utility function to strip URI prefix from a string.
+function _stripUri (str) {
+  const match = URI_REGEX.exec(str);
+  return match ? match[2] : str;
+}
+
 class Pool {
   // Build pool object from JSON object received from mayastor storage node.
   //
@@ -17,17 +25,17 @@ class Pool {
   // @param {string}   props.state    State of the pool.
   // @param {number}   props.capacity Capacity of the pool in bytes.
   // @param {number}   props.used     How many bytes are used in the pool.
-  constructor(props) {
+  constructor (props) {
     this.node = null; // set by registerPool method on node
     this.name = props.name;
-    this.disks = props.disks.sort();
+    this.disks = props.disks.map(_stripUri).sort();
     this.state = props.state;
     this.capacity = props.capacity;
     this.used = props.used;
     this.replicas = [];
   }
 
-  toString() {
+  toString () {
     return this.name + '@' + (this.node ? this.node.name : 'nowhere');
   }
 
@@ -40,34 +48,34 @@ class Pool {
   // @param {number}   props.capacity Capacity of the pool in bytes.
   // @param {number}   props.used     How many bytes are used in the pool.
   // @param {object[]} replicas       Replicas on the pool.
-  merge(props, replicas) {
+  merge (props, replicas) {
     let changed = false;
 
     // The first case should not normally happen. We log a warning,
     // record the change to the object but refrain from propagating the
     // information further as it is not clear what the higher level code
     // should do in such case or how to recover.
-    if (!_.isEqual(this.disks, props.disks.sort())) {
+    if (!_.isEqual(this.disks, props.disks.map(_stripUri).sort())) {
       log.warn(
-        `Unexpected disk change of the pool "${this}" from ${this.disks} to ${props.disks}`
+        `Unexpected disk change of the pool "${this}" from ${this.disks} to ${props.disks.map(_stripUri)}`
       );
     }
-    if (this.state != props.state) {
+    if (this.state !== props.state) {
       this.state = props.state;
       changed = true;
     }
-    if (this.capacity != props.capacity) {
+    if (this.capacity !== props.capacity) {
       this.capacity = props.capacity;
       changed = true;
     }
-    if (this.used != props.used) {
+    if (this.used !== props.used) {
       this.used = props.used;
       changed = true;
     }
     if (changed) {
       this.node.emit('pool', {
         eventType: 'mod',
-        object: this,
+        object: this
       });
     }
 
@@ -78,11 +86,11 @@ class Pool {
   //
   // @param {object[]} replicas   New list of replicas properties for the pool.
   //
-  _mergeReplicas(replicas) {
+  _mergeReplicas (replicas) {
     var self = this;
     // detect modified and new replicas
     replicas.forEach((props) => {
-      let replica = self.replicas.find((r) => r.uuid == props.uuid);
+      const replica = self.replicas.find((r) => r.uuid === props.uuid);
       if (replica) {
         // the replica already exists - update it
         replica.merge(props);
@@ -92,8 +100,8 @@ class Pool {
       }
     });
     // remove replicas that no longer exist
-    let removedReplicas = self.replicas.filter(
-      (r) => !replicas.find((ent) => ent.uuid == r.uuid)
+    const removedReplicas = self.replicas.filter(
+      (r) => !replicas.find((ent) => ent.uuid === r.uuid)
     );
     removedReplicas.forEach((r) => r.unbind());
   }
@@ -103,8 +111,8 @@ class Pool {
   //
   // @param {object} replica      New replica object.
   //
-  registerReplica(replica) {
-    assert(!this.replicas.find((r) => r.uuid == replica.uuid));
+  registerReplica (replica) {
+    assert(!this.replicas.find((r) => r.uuid === replica.uuid));
     this.replicas.push(replica);
     replica.bind(this);
   }
@@ -113,8 +121,8 @@ class Pool {
   //
   // @param {object} replica      Replica object to remove.
   //
-  unregisterReplica(replica) {
-    let idx = this.replicas.indexOf(replica);
+  unregisterReplica (replica) {
+    const idx = this.replicas.indexOf(replica);
     if (idx >= 0) {
       this.replicas.splice(idx, 1);
     } else {
@@ -129,25 +137,25 @@ class Pool {
   //
   // @param {object} node   Node object to assign the pool to.
   //
-  bind(node) {
+  bind (node) {
     assert(!this.node);
     this.node = node;
     log.info(`Adding pool "${this}" to a list`);
     this.node.emit('pool', {
       eventType: 'new',
-      object: this,
+      object: this
     });
   }
 
   // Unbind the previously bound pool from the node.
-  unbind() {
+  unbind () {
     log.info(`Removing pool "${this}" from a list`);
     this.replicas.forEach((r) => r.unbind());
     this.node.unregisterPool(this);
 
     this.node.emit('pool', {
       eventType: 'del',
-      object: this,
+      object: this
     });
     this.node = null;
   }
@@ -155,12 +163,12 @@ class Pool {
   // Return amount of free space in the storage pool.
   //
   // @returns {number} Free space in bytes.
-  freeBytes() {
+  freeBytes () {
     return this.capacity - this.used;
   }
 
   // Destroy the pool and remove it from the list of pools on the node.
-  async destroy() {
+  async destroy () {
     log.debug(`Destroying pool "${this}" ...`);
 
     try {
@@ -168,7 +176,7 @@ class Pool {
       log.info(`Destroyed pool "${this}"`);
     } catch (err) {
       // TODO: make destroyPool idempotent
-      if (err.code != GrpcCode.NOT_FOUND) {
+      if (err.code !== GrpcCode.NOT_FOUND) {
         throw err;
       }
       log.warn(`Removed pool "${this}" does not exist`);
@@ -179,20 +187,20 @@ class Pool {
   // Set state of the pool to offline and the same for all replicas on the pool.
   // This is typically called when mayastor stops running on the node and
   // the pool becomes inaccessible.
-  offline() {
+  offline () {
     log.warn(`Pool "${this}" got offline`);
     this.replicas.forEach((r) => r.offline());
     // artificial state that does not appear in grpc protocol
     this.state = 'POOL_OFFLINE';
     this.node.emit('pool', {
       eventType: 'mod',
-      object: this,
+      object: this
     });
   }
 
   // Return true if pool exists and is accessible, otherwise false.
-  isAccessible() {
-    return this.state == 'POOL_ONLINE' || this.state == 'POOL_DEGRADED';
+  isAccessible () {
+    return this.state === 'POOL_ONLINE' || this.state === 'POOL_DEGRADED';
   }
 
   // Create replica in this storage pool.
@@ -200,8 +208,8 @@ class Pool {
   // @param {string} uuid   ID of the new replica.
   // @param {number} size   Size of the replica in bytes.
   //
-  async createReplica(uuid, size) {
-    let pool = this.name;
+  async createReplica (uuid, size) {
+    const pool = this.name;
     const thin = false;
     const share = 'REPLICA_NONE';
 
@@ -212,7 +220,7 @@ class Pool {
       log.info(`Created replica "${uuid}" on the pool "${this}"`);
     } catch (err) {
       // TODO: Make rpc idempotent
-      if (err.code != GrpcCode.ALREADY_EXISTS) {
+      if (err.code !== GrpcCode.ALREADY_EXISTS) {
         throw err;
       }
     }
@@ -228,14 +236,14 @@ class Pool {
         `Failed to list new replica "${uuid}" on pool "${this}": ${err}`
       );
     }
-    var replicaInfo = resp.replicas.filter((r) => r.uuid == uuid)[0];
+    var replicaInfo = resp.replicas.filter((r) => r.uuid === uuid)[0];
     if (!replicaInfo) {
       throw new GrpcError(
         GrpcCode.INTERNAL,
         `New replica "${uuid}" on pool "${this}" not found`
       );
     }
-    let newReplica = new Replica(replicaInfo);
+    const newReplica = new Replica(replicaInfo);
     this.registerReplica(newReplica);
     return newReplica;
   }

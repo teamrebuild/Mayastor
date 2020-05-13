@@ -34,7 +34,7 @@ var remote; // true if the test suite is run against a remote grpc server
 var implicitDisk;
 
 // Create fake disk device used for testing (size 100M)
-function createTestDisk(diskFile, done) {
+function createTestDisk (diskFile, done) {
   exec('truncate -s 100m ' + diskFile, (err, stdout, stderr) => {
     if (err) return done(stderr);
 
@@ -49,17 +49,19 @@ function createTestDisk(diskFile, done) {
 }
 
 // Destroy the fake disk used for testing (disregard any error).
-function destroyTestDisk(diskFile, loopDev, done) {
+function destroyTestDisk (diskFile, loopDev, done) {
   if (loopDev != null) {
-    common.execAsRoot('losetup', ['-d', loopDev], (err) => {
-      fs.unlink(diskFile, (err) => done());
+    common.execAsRoot('losetup', ['-d', loopDev], () => {
+      fs.unlink(diskFile, () => {
+        done();
+      });
     });
   } else {
     done();
   }
 }
 
-function createGrpcClient(service) {
+function createGrpcClient (service) {
   return createClient(
     {
       protoPath: path.join(
@@ -76,25 +78,28 @@ function createGrpcClient(service) {
         longs: String,
         enums: String,
         defaults: true,
-        oneofs: true,
-      },
+        oneofs: true
+      }
     },
     endpoint
   );
 }
 
-describe('replica', function() {
+describe('replica', function () {
   var client;
 
   this.timeout(10000); // for network tests we need long timeouts
 
   // Destroy test pool if it exists (ignore errors as the test pool may not
   // exist).
-  function ensureNoTestPool(done) {
+  function ensureNoTestPool (done) {
     if (client == null) {
       return done();
     }
-    client.destroyPool({ name: POOL }, (err) => done());
+    client.destroyPool({ name: POOL }, (err) => {
+      if (err) console.log('Destroy pool failed:', err);
+      done();
+    });
   }
 
   // start mayastor if needed
@@ -103,7 +108,7 @@ describe('replica', function() {
     // mayastor and grpc server
     if (!endpoint) {
       remote = false;
-      endpoint = common.endpoint;
+      endpoint = common.grpcEndpoint;
       common.startMayastor();
       common.startMayastorGrpc();
     } else {
@@ -146,7 +151,7 @@ describe('replica', function() {
           }, next);
         },
         ensureNoTestPool,
-        common.ensureNbdWritable,
+        common.ensureNbdWritable
       ],
       done
     );
@@ -163,7 +168,7 @@ describe('replica', function() {
             destroyTestDisk(DISK_FILE, implicitDisk, next);
           }
         },
-        common.restoreNbdPerms,
+        common.restoreNbdPerms
       ],
       (err) => {
         if (client != null) {
@@ -178,7 +183,7 @@ describe('replica', function() {
     client.createPool(
       {
         name: POOL,
-        disks: ['/dev/somethingA', '/dev/somethingB'],
+        disks: ['/dev/somethingA', '/dev/somethingB']
       },
       (err, res) => {
         assert.equal(err.code, grpc.status.INVALID_ARGUMENT);
@@ -220,7 +225,7 @@ describe('replica', function() {
     client.listPools({}, (err, res) => {
       if (err) return done(err);
 
-      res = res.pools.filter((ent) => ent.name == POOL);
+      res = res.pools.filter((ent) => ent.name === POOL);
       assert.lengthOf(res, 1);
       res = res[0];
 
@@ -247,7 +252,7 @@ describe('replica', function() {
         pool: POOL,
         thin: true,
         share: 'REPLICA_ISCSI',
-        size: 8 * (1024 * 1024), // keep this multiple of cluster size (4MB)
+        size: 8 * (1024 * 1024) // keep this multiple of cluster size (4MB)
       },
       (err, res) => {
         if (err) return done(err);
@@ -263,7 +268,7 @@ describe('replica', function() {
     client.listReplicas({}, (err, res) => {
       if (err) return done(err);
       res = res.replicas.filter((ent) => {
-        return ent.uuid == UUID;
+        return ent.uuid === UUID;
       });
       assert.lengthOf(res, 1);
       res = res[0];
@@ -275,7 +280,7 @@ describe('replica', function() {
       assert.equal(res.uri.match(ISCSI_URI)[1], common.getMyIp());
 
       // runs the perf test for 1 second
-      exec('iscsi-perf -t 1 ' + res.uri + '/0', (error, stdout, stderr) => {
+      exec('iscsi-perf -t 1 ' + res.uri, (error, stdout, stderr) => {
         if (error) {
           done(stderr);
         } else {
@@ -300,7 +305,7 @@ describe('replica', function() {
         pool: POOL,
         thin: true,
         share: 'NONE',
-        size: 8 * (1024 * 1024), // keep this multiple of cluster size (4MB)
+        size: 8 * (1024 * 1024) // keep this multiple of cluster size (4MB)
       },
       (err, res) => {
         if (err) return done(err);
@@ -318,7 +323,7 @@ describe('replica', function() {
         pool: POOL,
         thin: true,
         share: 'NONE',
-        size: 8 * (1024 * 1024), // keep this multiple of cluster size (4MB)
+        size: 8 * (1024 * 1024) // keep this multiple of cluster size (4MB)
       },
       (err, res) => {
         assert.equal(err.code, grpc.status.ALREADY_EXISTS);
@@ -331,7 +336,7 @@ describe('replica', function() {
     client.listReplicas({}, (err, res) => {
       if (err) return done(err);
       res = res.replicas.filter((ent) => {
-        return ent.uuid == UUID;
+        return ent.uuid === UUID;
       });
       assert.lengthOf(res, 1);
       res = res[0];
@@ -348,7 +353,7 @@ describe('replica', function() {
     client.shareReplica(
       {
         uuid: UUID,
-        share: 'REPLICA_NVMF',
+        share: 'REPLICA_NVMF'
       },
       (err, res) => {
         if (err) return done(err);
@@ -358,7 +363,7 @@ describe('replica', function() {
         client.listReplicas({}, (err, res) => {
           if (err) return done(err);
           res = res.replicas.filter((ent) => {
-            return ent.uuid == UUID;
+            return ent.uuid === UUID;
           });
           assert.lengthOf(res, 1);
           res = res[0];
@@ -374,7 +379,7 @@ describe('replica', function() {
     client.shareReplica(
       {
         uuid: UUID,
-        share: 'REPLICA_NVMF',
+        share: 'REPLICA_NVMF'
       },
       (err, res) => {
         if (err) return done(err);
@@ -388,7 +393,7 @@ describe('replica', function() {
     client.shareReplica(
       {
         uuid: UUID,
-        share: 'REPLICA_ISCSI',
+        share: 'REPLICA_ISCSI'
       },
       (err, res) => {
         if (err) return done(err);
@@ -398,7 +403,7 @@ describe('replica', function() {
         client.listReplicas({}, (err, res) => {
           if (err) return done(err);
           res = res.replicas.filter((ent) => {
-            return ent.uuid == UUID;
+            return ent.uuid === UUID;
           });
           assert.lengthOf(res, 1);
           res = res[0];
@@ -414,7 +419,7 @@ describe('replica', function() {
     client.shareReplica(
       {
         uuid: UUID,
-        share: 'NONE',
+        share: 'NONE'
       },
       (err, res) => {
         if (err) return done(err);
@@ -423,7 +428,7 @@ describe('replica', function() {
         client.listReplicas({}, (err, res) => {
           if (err) return done(err);
           res = res.replicas.filter((ent) => {
-            return ent.uuid == UUID;
+            return ent.uuid === UUID;
           });
           assert.lengthOf(res, 1);
           res = res[0];
@@ -440,7 +445,7 @@ describe('replica', function() {
       if (err) return done(err);
 
       res = res.replicas.filter((ent) => {
-        return ent.uuid == UUID;
+        return ent.uuid === UUID;
       });
       assert.lengthOf(res, 1);
       res = res[0];
@@ -455,7 +460,7 @@ describe('replica', function() {
   });
 
   it('should return NotFound for a non existing replica', (done) => {
-    let unknownUuid = 'c35fa4dd-d527-4b7b-9cf0-436b8bb0ba77';
+    const unknownUuid = 'c35fa4dd-d527-4b7b-9cf0-436b8bb0ba77';
     client.destroyReplica({ uuid: unknownUuid }, (err, res) => {
       assert.equal(err.code, grpc.status.NOT_FOUND);
       done();
@@ -475,7 +480,7 @@ describe('replica', function() {
       if (err) return done(err);
 
       res = res.replicas.filter((ent) => {
-        return ent.uuid == UUID;
+        return ent.uuid === UUID;
       });
       assert.lengthOf(res, 0);
       done();
@@ -485,14 +490,14 @@ describe('replica', function() {
   it('should create 5 replicas', (done) => {
     async.times(
       5,
-      function(n, next) {
+      function (n, next) {
         client.createReplica(
           {
             uuid: BASE_UUID + n,
             pool: POOL,
             thin: true,
             share: 'NONE',
-            size: 8 * (1024 * 1024), // keep this multiple of cluster size (4MB)
+            size: 8 * (1024 * 1024) // keep this multiple of cluster size (4MB)
           },
           next
         );
@@ -524,14 +529,14 @@ describe('replica', function() {
     client.listPools({}, (err, res) => {
       if (err) return done(err);
 
-      res = res.pools.filter((ent) => ent.name == POOL);
+      res = res.pools.filter((ent) => ent.name === POOL);
       assert.lengthOf(res, 0);
       done();
     });
   });
 
-  describe('uring', function() {
-    before(function(done) {
+  describe('uring', function () {
+    before(function (done) {
       // Skip uring bdev if kernel lacks support
       const URING_SUPPORT_CMD = path.join(
         __dirname,
@@ -564,7 +569,7 @@ describe('replica', function() {
       client.listPools({}, (err, res) => {
         if (err) return done(err);
 
-        res = res.pools.filter((ent) => ent.name == POOL);
+        res = res.pools.filter((ent) => ent.name === POOL);
         assert.lengthOf(res, 1);
         res = res[0];
 
@@ -589,26 +594,27 @@ describe('replica', function() {
     });
   });
 
-  describe('nvmf', function() {
+  describe('nvmf', function () {
     let uri; // URI of the created nvmf replica
-    let blockFile = '/tmp/test_block'; // file with contents of a data block
+    const blockFile = '/tmp/test_block'; // file with contents of a data block
 
     // run unlink as root because the file was created by root
-    function rmBlockFile(done) {
+    function rmBlockFile (done) {
       common.execAsRoot('rm', ['-f', blockFile], (err) => {
+        if (err) console.log('Remove file failed', blockFile, err);
         // ignore unlink error
         done();
       });
     }
 
     before((done) => {
-      const buf = Buffer.alloc(4096, 'm');
+      const buf = Buffer.alloc(512, 'm');
 
       async.series(
         [
           (next) => rmBlockFile(next),
           (next) => fs.writeFile(blockFile, buf, next),
-          (next) => client.createPool({ name: POOL, disks: disks }, next),
+          (next) => client.createPool({ name: POOL, disks: disks }, next)
         ],
         done
       );
@@ -630,7 +636,7 @@ describe('replica', function() {
           // Keep this multiple of cluster size (4MB).
           // Fill the entire pool so that we can test data reset
           // upon replica recreate.
-          size: 96 * (1024 * 1024),
+          size: 96 * (1024 * 1024)
         },
         (err, res) => {
           if (err) return done(err);
@@ -647,7 +653,7 @@ describe('replica', function() {
       client.listReplicas({}, (err, res) => {
         if (err) return done(err);
         res = res.replicas.filter((ent) => {
-          return ent.uuid == UUID;
+          return ent.uuid === UUID;
         });
         assert.lengthOf(res, 1);
         res = res[0];
@@ -687,16 +693,16 @@ describe('replica', function() {
             fs.readFile(blockFile, (err, data) => {
               if (err) return done(err);
               data = data.toString();
-              assert.lengthOf(data, 4096);
+              assert.lengthOf(data, 512);
               for (let i = 0; i < data.length; i++) {
-                if (data[i] != 'm') {
+                if (data[i] !== 'm') {
                   next(new Error(`Invalid char '${data[i]}' at offset ${i}`));
                   return;
                 }
               }
               next();
             });
-          },
+          }
         ],
         done
       );
@@ -717,7 +723,7 @@ describe('replica', function() {
           pool: POOL,
           thin: true,
           share: 'REPLICA_NVMF',
-          size: 8 * (1024 * 1024), // keep this multiple of cluster size (4MB)
+          size: 8 * (1024 * 1024) // keep this multiple of cluster size (4MB)
         },
         (err, res) => {
           if (err) return done(err);
@@ -743,16 +749,16 @@ describe('replica', function() {
           (next) => {
             fs.readFile(blockFile, (err, data) => {
               if (err) return done(err);
-              assert.lengthOf(data, 4096);
+              assert.lengthOf(data, 512);
               for (let i = 0; i < data.length; i++) {
-                if (data[i] != 0) {
+                if (data[i] !== 0) {
                   next(new Error(`Invalid char '${data[i]}' at offset ${i}`));
                   return;
                 }
               }
               next();
             });
-          },
+          }
         ],
         done
       );
@@ -767,7 +773,7 @@ describe('replica', function() {
     });
   });
 
-  describe('import', function() {
+  describe('import', function () {
     before(() => {
       // For testing import we need to restart mayastor which is possible only
       // if testing local instance of mayastor.
@@ -792,13 +798,14 @@ describe('replica', function() {
           },
           (next) =>
             client.listPools({}, (err, res) => {
-              res = res.pools.filter((ent) => ent.name == POOL);
+              if (err) console.log('error listing pools:', err);
+              res = res.pools.filter((ent) => ent.name === POOL);
               if (res.length > 0) {
                 next(new Error("Found pool which hasn't been imported yet"));
               } else {
                 next();
               }
-            }),
+            })
         ],
         done
       );
@@ -812,10 +819,10 @@ describe('replica', function() {
           (next) =>
             client.listPools({}, (err, res) => {
               if (err) return next(err);
-              res = res.pools.filter((ent) => ent.name == POOL);
+              res = res.pools.filter((ent) => ent.name === POOL);
               assert.lengthOf(res, 1);
               next();
-            }),
+            })
         ],
         done
       );

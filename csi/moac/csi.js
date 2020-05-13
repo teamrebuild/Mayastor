@@ -11,11 +11,11 @@ const log = require('./logger').Logger('csi');
 const { GrpcError } = require('./grpc_client');
 const {
   PLUGIN_NAME,
-  parseMayastorNodeId,
-  isPoolAccessible,
+  parseMayastorNodeId
 } = require('./common');
 
-const PROTO_PATH = __dirname + '/proto/csi.proto';
+const path = require('path');
+const PROTO_PATH = path.join(__dirname, '/proto/csi.proto');
 // TODO: can we generate version with commit SHA dynamically?
 const VERSION = '0.1';
 const PVC_RE = /pvc-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/;
@@ -29,7 +29,7 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   oneofs: true,
   // this is to load google/descriptor.proto, otherwise you would see error:
   // unresolvable extensions: 'extend google.protobuf.FieldOptions' in .csi.v1
-  includeDirs: [__dirname + '/node_modules/protobufjs'],
+  includeDirs: [path.join(__dirname, '/node_modules/protobufjs')]
 });
 const csi = grpc.loadPackageDefinition(packageDefinition).csi.v1;
 
@@ -37,7 +37,7 @@ const csi = grpc.loadPackageDefinition(packageDefinition).csi.v1;
 // capability. Throws grpc error if a capability is not supported.
 //
 // @param {string[]} caps    Volume capabilities as described in CSI spec.
-function checkCapabilities(caps) {
+function checkCapabilities (caps) {
   if (!caps) {
     throw new GrpcError(
       grpc.status.INVALID_ARGUMENT,
@@ -45,10 +45,10 @@ function checkCapabilities(caps) {
     );
   }
   for (let i = 0; i < caps.length; i++) {
-    let cap = caps[i];
+    const cap = caps[i];
 
     // TODO: Check that FS type is supported and mount options?
-    if (cap.accessMode.mode != 'SINGLE_NODE_WRITER') {
+    if (cap.accessMode.mode !== 'SINGLE_NODE_WRITER') {
       throw new GrpcError(
         grpc.status.INVALID_ARGUMENT,
         `Access mode ${cap.accessMode.mode} not supported`
@@ -61,15 +61,15 @@ function checkCapabilities(caps) {
 //
 // @param   {object} volume   Volume object.
 // @returns {object} K8s CSI volume object.
-function createK8sVolumeObject(volume) {
+function createK8sVolumeObject (volume) {
   return {
     volumeId: volume.uuid,
     capacityBytes: volume.getSize(),
     accessibleTopology: [
       {
-        segments: { 'kubernetes.io/hostname': volume.getNodeName() },
-      },
-    ],
+        segments: { 'kubernetes.io/hostname': volume.getNodeName() }
+      }
+    ]
   };
 }
 
@@ -82,8 +82,8 @@ class CsiServer {
   // Creates new csi server
   //
   // @param {string} sockPath   Unix domain socket for csi server to listen on.
-  constructor(sockPath) {
-    assert.equal(typeof sockPath, 'string');
+  constructor (sockPath) {
+    assert.strictEqual(typeof sockPath, 'string');
     this.server = new grpc.Server();
     this.ready = false;
     this.registry = null;
@@ -97,7 +97,7 @@ class CsiServer {
     this.server.addService(csi.Identity.service, {
       getPluginInfo: this.getPluginInfo.bind(this),
       getPluginCapabilities: this.getPluginCapabilities.bind(this),
-      probe: this.probe.bind(this),
+      probe: this.probe.bind(this)
     });
 
     // Wrap all controller methods by a check for readiness of the csi server
@@ -112,10 +112,10 @@ class CsiServer {
       'validateVolumeCapabilities',
       'listVolumes',
       'getCapacity',
-      'controllerGetCapabilities',
+      'controllerGetCapabilities'
     ];
     methodNames.forEach((name) => {
-      controllerMethods[name] = function checkReady(args, cb) {
+      controllerMethods[name] = function checkReady (args, cb) {
         log.trace(`CSI ${name} request: ${JSON.stringify(args)}`);
 
         if (!self.ready) {
@@ -147,11 +147,11 @@ class CsiServer {
       'createSnapshot',
       'deleteSnapshot',
       'listSnapshots',
-      'controllerExpandVolume',
+      'controllerExpandVolume'
     ];
     methodNames.forEach((name) => {
-      controllerMethods[name] = function notImplemented(_, cb) {
-        let msg = `CSI method ${name} not implemented`;
+      controllerMethods[name] = function notImplemented (_, cb) {
+        const msg = `CSI method ${name} not implemented`;
         log.error(msg);
         cb(new GrpcError(grpc.status.UNIMPLEMENTED, msg));
       };
@@ -160,7 +160,7 @@ class CsiServer {
   }
 
   // Listen on UDS
-  async start() {
+  async start () {
     try {
       await fs.lstat(this.sockPath);
       log.info('Removing stale socket file ' + this.sockPath);
@@ -168,7 +168,7 @@ class CsiServer {
     } catch (err) {
       // the file does not exist which is ok
     }
-    let ok = this.server.bind(
+    const ok = this.server.bind(
       this.sockPath,
       grpc.ServerCredentials.createInsecure()
     );
@@ -181,7 +181,7 @@ class CsiServer {
   }
 
   // Stop the grpc server.
-  async stop() {
+  async stop () {
     var self = this;
     return new Promise((resolve, reject) => {
       log.info('Shutting down grpc server');
@@ -194,7 +194,7 @@ class CsiServer {
   //
   // @param {object} registry Object holding node, replica, pool and nexus objects.
   // @param {object} volumes  Volume manager.
-  makeReady(registry, volumes) {
+  makeReady (registry, volumes) {
     this.ready = true;
     this.registry = registry;
     this.volumes = volumes;
@@ -202,7 +202,7 @@ class CsiServer {
 
   // Stop serving controller requests, but the identity service still works.
   // This is usually preparation for a shutdown.
-  undoReady() {
+  undoReady () {
     this.ready = false;
   }
 
@@ -210,28 +210,28 @@ class CsiServer {
   // Implementation of CSI identity methods
   //
 
-  getPluginInfo(_, cb) {
+  getPluginInfo (_, cb) {
     log.debug(
       `getPluginInfo request (name=${PLUGIN_NAME}, version=${VERSION})`
     );
     cb(null, {
       name: PLUGIN_NAME,
       vendorVersion: VERSION,
-      manifest: {},
+      manifest: {}
     });
   }
 
-  getPluginCapabilities(_, cb) {
+  getPluginCapabilities (_, cb) {
     var caps = ['CONTROLLER_SERVICE', 'VOLUME_ACCESSIBILITY_CONSTRAINTS'];
     log.debug('getPluginCapabilities request: ' + caps.join(', '));
     cb(null, {
       capabilities: caps.map((c) => {
         return { service: { type: c } };
-      }),
+      })
     });
   }
 
-  probe(_, cb) {
+  probe (_, cb) {
     log.debug(`probe request (ready=${this.ready})`);
     cb(null, { ready: { value: this.ready } });
   }
@@ -240,22 +240,22 @@ class CsiServer {
   // Implementation of CSI controller methods
   //
 
-  async controllerGetCapabilities(_, cb) {
+  async controllerGetCapabilities (_, cb) {
     var caps = [
       'CREATE_DELETE_VOLUME',
       'PUBLISH_UNPUBLISH_VOLUME',
       'LIST_VOLUMES',
-      'GET_CAPACITY',
+      'GET_CAPACITY'
     ];
     log.debug('get capabilities request: ' + caps.join(', '));
     cb(null, {
       capabilities: caps.map((c) => {
         return { rpc: { type: c } };
-      }),
+      })
     });
   }
 
-  async createVolume(call, cb) {
+  async createVolume (call, cb) {
     var args = call.request;
 
     log.debug(
@@ -274,7 +274,7 @@ class CsiServer {
     }
     // k8s uses names pvc-{uuid} and we use uuid further as ID in SPDK so we
     // must require it.
-    let m = args.name.match(PVC_RE);
+    const m = args.name.match(PVC_RE);
     if (!m) {
       return cb(
         new GrpcError(
@@ -283,14 +283,14 @@ class CsiServer {
         )
       );
     }
-    let uuid = m[1];
+    const uuid = m[1];
     try {
       checkCapabilities(args.volumeCapabilities);
     } catch (err) {
       return cb(err);
     }
-    let mustNodes = [];
-    let shouldNodes = [];
+    const mustNodes = [];
+    const shouldNodes = [];
 
     if (args.accessibilityRequirements) {
       for (
@@ -298,11 +298,11 @@ class CsiServer {
         i < args.accessibilityRequirements.requisite.length;
         i++
       ) {
-        let reqs = args.accessibilityRequirements.requisite[i];
-        for (let key in reqs.segments) {
+        const reqs = args.accessibilityRequirements.requisite[i];
+        for (const key in reqs.segments) {
           // We are not able to evaluate any other topology requirements than
           // the hostname req. Reject all others.
-          if (key != 'kubernetes.io/hostname') {
+          if (key !== 'kubernetes.io/hostname') {
             return cb(
               new GrpcError(
                 grpc.status.INVALID_ARGUMENT,
@@ -319,10 +319,10 @@ class CsiServer {
         i < args.accessibilityRequirements.preferred.length;
         i++
       ) {
-        let reqs = args.accessibilityRequirements.preferred[i];
-        for (let key in reqs.segments) {
+        const reqs = args.accessibilityRequirements.preferred[i];
+        for (const key in reqs.segments) {
           // ignore others than hostname (it's only preferred)
-          if (key == 'kubernetes.io/hostname') {
+          if (key === 'kubernetes.io/hostname') {
             shouldNodes.push(reqs.segments[key]);
           }
         }
@@ -349,7 +349,7 @@ class CsiServer {
         preferredNodes: shouldNodes,
         requiredNodes: mustNodes,
         requiredBytes: args.capacityRange.requiredBytes,
-        limitBytes: args.capacityRange.limitBytes,
+        limitBytes: args.capacityRange.limitBytes
       });
     } catch (err) {
       return cb(err);
@@ -362,20 +362,20 @@ class CsiServer {
         // enfore local access to the volume
         accessibleTopology: [
           {
-            segments: { 'kubernetes.io/hostname': volume.getNodeName() },
-          },
+            segments: { 'kubernetes.io/hostname': volume.getNodeName() }
+          }
         ],
         // parameters defined in the storage class are only presented
         // to the CSI driver createVolume method.
         // Propagate them to other CSI driver methods involved in
         // standing up a volume, using the volume context.
         // Deep copy.
-        volumeContext: JSON.parse(JSON.stringify(args.parameters)),
-      },
+        volumeContext: JSON.parse(JSON.stringify(args.parameters))
+      }
     });
   }
 
-  async deleteVolume(call, cb) {
+  async deleteVolume (call, cb) {
     var args = call.request;
 
     log.debug(`Request to destroy volume "${args.volumeId}"`);
@@ -389,7 +389,7 @@ class CsiServer {
     cb();
   }
 
-  async listVolumes(call, cb) {
+  async listVolumes (call, cb) {
     var args = call.request;
     var ctx = {};
 
@@ -412,7 +412,7 @@ class CsiServer {
           .map(createK8sVolumeObject)
           .map((v) => {
             return { volume: v };
-          }),
+          })
       };
     }
     // default max entries
@@ -424,25 +424,25 @@ class CsiServer {
 
     // TODO: purge list contexts older than .. (1 min)
     if (ctx.volumes.length > 0) {
-      let ctxId = this.nextListContextId++;
+      const ctxId = this.nextListContextId++;
       this.listContexts[ctxId] = ctx;
       cb(null, {
         entries: entries,
-        nextToken: ctxId.toString(),
+        nextToken: ctxId.toString()
       });
     } else {
       cb(null, { entries: entries });
     }
   }
 
-  async controllerPublishVolume(call, cb) {
+  async controllerPublishVolume (call, cb) {
     var args = call.request;
 
     log.debug(
       `Request to publish volume "${args.volumeId}" on "${args.nodeId}"`
     );
 
-    let volume = this.volumes.get(args.volumeId);
+    const volume = this.volumes.get(args.volumeId);
     if (!volume) {
       return cb(
         new GrpcError(
@@ -457,8 +457,8 @@ class CsiServer {
     } catch (err) {
       return cb(err);
     }
-    let nodeName = volume.getNodeName();
-    if (nodeId.node != nodeName) {
+    const nodeName = volume.getNodeName();
+    if (nodeId.node !== nodeName) {
       return cb(
         new GrpcError(
           grpc.status.INVALID_ARGUMENT,
@@ -491,12 +491,18 @@ class CsiServer {
       );
     }
 
+    const publishCtx = {};
     try {
-      await volume.publish(args.volumeContext.protocol);
+      publishCtx.uri = await volume.publish(args.volumeContext.protocol);
+      log.debug(
+        `"${args.volumeId}" published, got uri ${publishCtx.uri} `
+      );
     } catch (err) {
       if (err.code === grpc.status.ALREADY_EXISTS) {
         log.debug(`Volume "${args.volumeId}" already published on this node`);
-        cb(null, {});
+        cb(null, {
+          publishContext: JSON.parse(JSON.stringify(publishCtx))
+        });
       } else {
         cb(err);
       }
@@ -506,15 +512,17 @@ class CsiServer {
     log.info(
       `Published volume "${args.volumeId}, share proctocol: "${args.volumeContext.protocol}"`
     );
-    cb(null, {});
+    cb(null, {
+      publishContext: JSON.parse(JSON.stringify(publishCtx))
+    });
   }
 
-  async controllerUnpublishVolume(call, cb) {
+  async controllerUnpublishVolume (call, cb) {
     var args = call.request;
 
     log.debug(`Request to unpublish volume "${args.volumeId}"`);
 
-    let volume = this.volumes.get(args.volumeId);
+    const volume = this.volumes.get(args.volumeId);
     if (!volume) {
       return cb(
         new GrpcError(
@@ -529,8 +537,8 @@ class CsiServer {
     } catch (err) {
       return cb(err);
     }
-    let nodeName = volume.getNodeName();
-    if (nodeId.node != nodeName) {
+    const nodeName = volume.getNodeName();
+    if (nodeId.node !== nodeName) {
       // we unpublish the volume anyway but at least we log a message
       log.warn(
         `Request to unpublish volume "${args.volumeId}" from a node ` +
@@ -547,7 +555,7 @@ class CsiServer {
     cb(null, {});
   }
 
-  async validateVolumeCapabilities(call, cb) {
+  async validateVolumeCapabilities (call, cb) {
     var args = call.request;
 
     log.debug(`Request to validate volume capabilities for "${args.volumeId}"`);
@@ -560,10 +568,10 @@ class CsiServer {
         )
       );
     }
-    let caps = args.volumeCapabilities.filter(
-      (cap) => cap.accessMode.mode == 'SINGLE_NODE_WRITER'
+    const caps = args.volumeCapabilities.filter(
+      (cap) => cap.accessMode.mode === 'SINGLE_NODE_WRITER'
     );
-    let resp = {};
+    const resp = {};
     if (caps.length > 0) {
       resp.confirmed = { volumeCapabilities: caps };
     } else {
@@ -578,7 +586,7 @@ class CsiServer {
   //
   // XXX Is the caller interested in total capacity (sum of all pools) or
   // a capacity usable by a single volume?
-  async getCapacity(call, cb) {
+  async getCapacity (call, cb) {
     var nodeName;
     var args = call.request;
 
@@ -590,15 +598,15 @@ class CsiServer {
       }
     }
     if (args.accessibleTopology) {
-      for (let key in args.accessibleTopology.segments) {
-        if (key == 'kubernetes.io/hostname') {
+      for (const key in args.accessibleTopology.segments) {
+        if (key === 'kubernetes.io/hostname') {
           nodeName = args.accessibleTopology.segments[key];
           break;
         }
       }
     }
 
-    let capacity = this.registry.getCapacity(nodeName);
+    const capacity = this.registry.getCapacity(nodeName);
     log.debug(`Get total capacity of node "${nodeName}": ${capacity} bytes`);
     cb(null, { availableCapacity: capacity });
   }
@@ -607,5 +615,5 @@ class CsiServer {
 module.exports = {
   CsiServer,
   // this is exported for the tests
-  csi,
+  csi
 };

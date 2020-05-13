@@ -1,5 +1,4 @@
 use futures::{future, FutureExt};
-use uuid::Uuid;
 
 use rpc::mayastor::{
     AddChildNexusRequest,
@@ -25,22 +24,11 @@ use rpc::mayastor::{
 use crate::{
     bdev::nexus::{
         instances,
-        nexus_bdev::{nexus_create, Error, Nexus},
+        nexus_bdev::{name_to_uuid, nexus_create, uuid_to_name, Error, Nexus},
     },
     jsonrpc::jsonrpc_register,
     rebuild::RebuildJob,
 };
-
-/// Convert the UUID to a nexus name in the form of "nexus-{uuid}".
-/// Return error if the UUID is not valid.
-fn uuid_to_name(uuid: &str) -> Result<String, Error> {
-    match Uuid::parse_str(uuid) {
-        Ok(uuid) => Ok(format!("nexus-{}", uuid.to_hyphenated().to_string())),
-        Err(_) => Err(Error::InvalidUuid {
-            uuid: uuid.to_owned(),
-        }),
-    }
-}
 
 /// Lookup a nexus by its uuid. Return error if uuid is invalid or nexus
 /// not found.
@@ -56,19 +44,6 @@ fn nexus_lookup(uuid: &str) -> Result<&mut Nexus, Error> {
     }
 }
 
-/// Convert nexus name to uuid.
-///
-/// This function never fails which means that if there is a nexus with
-/// unconventional name that likely means it was not created using nexus
-/// jsonrpc api, we return the whole name without modifications as it is.
-fn name_to_uuid(name: &str) -> &str {
-    if name.starts_with("nexus-") {
-        &name[6 ..]
-    } else {
-        name
-    }
-}
-
 pub(crate) fn register_rpc_methods() {
     // JSON rpc method to list the nexus and their states
     jsonrpc_register::<(), _, _, Error>("list_nexus", |_| {
@@ -78,14 +53,11 @@ pub(crate) fn register_rpc_methods() {
                 .map(|nexus| RpcNexus {
                     uuid: name_to_uuid(&nexus.name).to_string(),
                     size: nexus.size(),
-                    state: nexus.state.to_string(),
+                    state: nexus.status().to_string(),
                     children: nexus
                         .children
                         .iter()
-                        .map(|child| Child {
-                            uri: child.name.clone(),
-                            state: child.state.to_string(),
-                        })
+                        .map(Child::from)
                         .collect::<Vec<_>>(),
                     device_path: nexus.get_share_path().unwrap_or_default(),
                     rebuilds: RebuildJob::count() as u64,
@@ -250,7 +222,7 @@ pub(crate) fn register_rpc_methods() {
     jsonrpc_register("get_rebuild_progress", |args: RebuildProgressRequest| {
         let fut = async move {
             let nexus = nexus_lookup(&args.uuid)?;
-            nexus.get_rebuild_progress().await
+            nexus.get_rebuild_progress(&args.uri)
         };
         fut.boxed_local()
     });

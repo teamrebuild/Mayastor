@@ -22,6 +22,7 @@ use spdk_sys::{
     spdk_bdev_io_get_buf,
     spdk_bdev_readv_blocks,
     spdk_bdev_register,
+    spdk_bdev_reset,
     spdk_bdev_unmap_blocks,
     spdk_bdev_unregister,
     spdk_bdev_writev_blocks,
@@ -30,8 +31,7 @@ use spdk_sys::{
     spdk_io_device_unregister,
 };
 use tonic::{Code as GrpcCode, Status};
-
-use rpc::mayastor::RebuildProgressReply;
+use uuid::Uuid;
 
 use crate::{
     bdev::{
@@ -39,14 +39,14 @@ use crate::{
         nexus::{
             instances,
             nexus_channel::{DREvent, NexusChannel, NexusChannelInner},
-            nexus_child::{ChildError, ChildState, NexusChild},
+            nexus_child::{ChildError, ChildState, ChildStatus, NexusChild},
             nexus_io::{io_status, Bio},
             nexus_iscsi::{NexusIscsiError, NexusIscsiTarget},
             nexus_label::LabelError,
             nexus_nbd::{NbdDisk, NbdError},
         },
     },
-    core::{Bdev, DmaBuf, DmaError},
+    core::{Bdev, DmaError},
     ffihelper::errno_result_from_i32,
     jsonrpc::{Code, RpcErrorCode},
     nexus_uri::BdevCreateDestroy,
@@ -131,8 +131,6 @@ pub enum Error {
     },
     #[snafu(display("Child {} of nexus {} not found", child, name))]
     ChildNotFound { child: String, name: String },
-    #[snafu(display("Child {} of nexus {} is not closed", child, name))]
-    ChildNotClosed { child: String, name: String },
     #[snafu(display("Suitable rebuild source for nexus {} not found", name))]
     NoRebuildSource { name: String },
     #[snafu(display(
@@ -173,6 +171,17 @@ pub enum Error {
     NexusCreate { name: String },
     #[snafu(display("Failed to destroy nexus {}", name))]
     NexusDestroy { name: String },
+    #[snafu(display(
+        "Child {} of nexus {} is not degraded but {}",
+        child,
+        name,
+        state
+    ))]
+    ChildNotDegraded {
+        child: String,
+        name: String,
+        state: String,
+    },
 }
 
 impl RpcErrorCode for Error {
@@ -292,7 +301,7 @@ pub struct Nexus {
     /// raw pointer to bdev (to destruct it later using Box::from_raw())
     bdev_raw: *mut spdk_bdev,
     /// represents the current state of the Nexus
-    pub(crate) state: NexusState,
+    pub(super) state: NexusState,
     /// Dynamic Reconfigure event
     pub dr_complete_notify: Option<oneshot::Sender<i32>>,
     /// the offset in num blocks where the data partition starts
@@ -308,31 +317,43 @@ unsafe impl core::marker::Sync for Nexus {}
 unsafe impl core::marker::Send for Nexus {}
 
 #[derive(Debug, Serialize, Clone, Copy, PartialEq, PartialOrd)]
+pub enum NexusStatus {
+    /// The nexus cannot perform any IO operation
+    Faulted,
+    /// Degraded, one or more child is missing but IO can still flow
+    Degraded,
+    /// Online
+    Online,
+}
+
+#[derive(Debug, Serialize, Clone, Copy, PartialEq, PartialOrd)]
 pub enum NexusState {
     /// nexus created but no children attached
     Init,
     /// closed
     Closed,
-    /// Online
-    Online,
-    /// The nexus cannot perform any IO operation
-    Faulted,
-    /// Degraded, one or more child is missing but IO can still flow
-    Degraded,
-    /// mule is moving blocks from A to B which is typical for an animal like
-    /// this
-    Remuling,
+    /// open
+    Open,
 }
 
 impl ToString for NexusState {
     fn to_string(&self) -> String {
         match *self {
             NexusState::Init => "init",
-            NexusState::Online => "online",
-            NexusState::Faulted => "faulted",
-            NexusState::Degraded => "degraded",
             NexusState::Closed => "closed",
-            NexusState::Remuling => "remuling",
+            NexusState::Open => "open",
+        }
+        .parse()
+        .unwrap()
+    }
+}
+
+impl ToString for NexusStatus {
+    fn to_string(&self) -> String {
+        match *self {
+            NexusStatus::Degraded => "degraded",
+            NexusStatus::Online => "online",
+            NexusStatus::Faulted => "faulted",
         }
         .parse()
         .unwrap()
@@ -442,56 +463,14 @@ impl Nexus {
     }
 
     pub async fn sync_labels(&mut self) -> Result<(), Error> {
-        if let Ok(label) = self.update_child_labels().await {
-            // now register the bdev but update its size first to
-            // ensure we adhere to the partitions
+        let label = self.update_child_labels().await.context(WriteLabel {
+            name: self.name.clone(),
+        })?;
 
-            // When the GUID does not match the given UUID it means
-            // that the PVC has been recreated, in such a
-            // case we should consider updating the labels
-
-            info!("{}: {} ", self.name, label);
-            self.data_ent_offset = label.offset();
-            self.bdev.set_block_count(label.get_block_count());
-        } else {
-            // one or more children do not have, or have an invalid gpt label.
-            // Recalculate what the header should have been and
-            // write them out
-
-            info!(
-                "{}: Child label(s) mismatch or absent, applying new label(s)",
-                self.name
-            );
-
-            let mut label = self.generate_label();
-            self.data_ent_offset = label.offset();
-            self.bdev.set_block_count(label.get_block_count());
-
-            let blk_size = self.bdev.block_len();
-            let mut buf = DmaBuf::new(
-                (blk_size * (((1 << 14) / blk_size) + 1)) as usize,
-                self.bdev.alignment(),
-            )
-            .context(AllocLabel {
-                name: self.name.clone(),
-            })?;
-
-            self.write_label(&mut buf, &mut label, true).await.context(
-                WriteLabel {
-                    name: self.name.clone(),
-                },
-            )?;
-            self.write_label(&mut buf, &mut label, false)
-                .await
-                .context(WriteLabel {
-                    name: self.name.clone(),
-                })?;
-            info!("{}: {} ", self.name, label);
-
-            self.write_pmbr().await.context(WritePmbr {
-                name: self.name.clone(),
-            })?;
-        }
+        // Now register the bdev but update its size first
+        // to ensure we adhere to the partitions.
+        self.data_ent_offset = label.offset();
+        self.bdev.set_block_count(label.get_block_count());
 
         Ok(())
     }
@@ -509,8 +488,7 @@ impl Nexus {
         self.children
             .iter_mut()
             .map(|c| {
-                if c.state == ChildState::Open || c.state == ChildState::Faulted
-                {
+                if c.state == ChildState::Open {
                     c.close();
                 }
             })
@@ -599,7 +577,7 @@ impl Nexus {
 
         match errno_result_from_i32((), errno) {
             Ok(_) => {
-                self.set_state(NexusState::Online);
+                self.set_state(NexusState::Open);
                 Ok(())
             }
             Err(err) => {
@@ -607,7 +585,7 @@ impl Nexus {
                     spdk_io_device_unregister(self.as_ptr(), None);
                 }
                 self.children.iter_mut().map(|c| c.close()).for_each(drop);
-                self.set_state(NexusState::Faulted);
+                self.set_state(NexusState::Closed);
                 Err(err).context(RegisterNexus {
                     name: self.name.clone(),
                 })
@@ -745,6 +723,40 @@ impl Nexus {
         }
     }
 
+    /// send reset IO to the underlying children.
+    pub(crate) fn reset(
+        &self,
+        pio: *mut spdk_bdev_io,
+        channels: &NexusChannelInner,
+    ) {
+        let mut io = Bio(pio);
+        // in case of resets, we want to reset all underlying children
+        io.ctx_as_mut_ref().in_flight = channels.ch.len() as i8;
+        let results = channels
+            .ch
+            .iter()
+            .map(|c| unsafe {
+                let (bdev, chan) = c.io_tuple();
+                trace!("Dispatched RESET");
+                spdk_bdev_reset(
+                    bdev,
+                    chan,
+                    Some(Self::io_completion),
+                    pio as *mut _,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        // if any of the children failed to dispatch
+        if results.iter().any(|r| *r != 0) {
+            error!(
+                "{}: Failed to submit dispatched IO {:?}",
+                io.nexus_as_ref().name,
+                pio
+            );
+        }
+    }
+
     /// write vectored IO to the underlying children.
     pub(crate) fn writev(
         &self,
@@ -817,18 +829,65 @@ impl Nexus {
         }
     }
 
-    /// returns the current status of the nexus
-    pub fn status(&self) -> NexusState {
-        self.state
+    /// Status of the nexus
+    /// Online
+    /// All children must also be online
+    ///
+    /// Degraded
+    /// At least one child must be online
+    ///
+    /// Faulted
+    /// No child is online so the nexus is faulted
+    /// This may be made more configurable in the future
+    pub fn status(&self) -> NexusStatus {
+        match self.state {
+            NexusState::Init => NexusStatus::Degraded,
+            NexusState::Closed => NexusStatus::Faulted,
+            NexusState::Open => {
+                if self
+                    .children
+                    .iter()
+                    // All children are online, so the Nexus is also online
+                    .all(|c| c.status() == ChildStatus::Online)
+                {
+                    NexusStatus::Online
+                } else if self
+                    .children
+                    .iter()
+                    // at least one child online, so the Nexus is also online
+                    .any(|c| c.status() == ChildStatus::Online)
+                {
+                    NexusStatus::Degraded
+                } else {
+                    // nexus has no children or at least no child is online
+                    NexusStatus::Faulted
+                }
+            }
+        }
     }
+}
 
-    pub async fn get_rebuild_progress(
-        &self,
-    ) -> Result<RebuildProgressReply, Error> {
-        // TODO: add real implementation
-        Ok(RebuildProgressReply {
-            progress: "Not implemented".to_string(),
-        })
+/// Convert the UUID to a nexus name in the form of "nexus-{uuid}".
+/// Return error if the UUID is not valid.
+pub fn uuid_to_name(uuid: &str) -> Result<String, Error> {
+    match Uuid::parse_str(uuid) {
+        Ok(uuid) => Ok(format!("nexus-{}", uuid.to_hyphenated().to_string())),
+        Err(_) => Err(Error::InvalidUuid {
+            uuid: uuid.to_owned(),
+        }),
+    }
+}
+
+/// Convert nexus name to uuid.
+///
+/// This function never fails which means that if there is a nexus with
+/// unconventional name that likely means it was not created using nexus
+/// jsonrpc api, we return the whole name without modifications as it is.
+pub fn name_to_uuid(name: &str) -> &str {
+    if name.starts_with("nexus-") {
+        &name[6 ..]
+    } else {
+        name
     }
 }
 

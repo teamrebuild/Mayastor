@@ -33,12 +33,17 @@ use crate::{
             Error,
             Nexus,
             NexusState,
+            NexusStatus,
             OpenChild,
-            ReadLabel,
         },
         nexus_channel::DREvent,
         nexus_child::{ChildState, NexusChild},
-        nexus_label::NexusLabel,
+        nexus_label::{
+            LabelError,
+            NexusChildLabel,
+            NexusLabel,
+            NexusLabelStatus,
+        },
     },
     core::Bdev,
     nexus_uri::{bdev_create, bdev_destroy, BdevCreateDestroy},
@@ -87,7 +92,7 @@ impl Nexus {
     ///
     /// The child may require a rebuild first, so the nexus will
     /// transition to degraded mode when the addition has been successful.
-    pub async fn add_child(&mut self, uri: &str) -> Result<NexusState, Error> {
+    pub async fn add_child(&mut self, uri: &str) -> Result<NexusStatus, Error> {
         let name = bdev_create(&uri).await.context(CreateChild {
             name: self.name.clone(),
         })?;
@@ -135,20 +140,19 @@ impl Nexus {
                 // completed the device can transition to online
                 info!("{}: child opened successfully {}", self.name, name);
 
-                // mark faulted so that it can never take part in the IO path of
-                // the nexus until brought online.
-                child.state = ChildState::Faulted;
+                // it can never take part in the IO path
+                // of the nexus until it's rebuilt from a healthy child.
+                child.out_of_sync(true);
 
                 self.children.push(child);
                 self.child_count += 1;
-                self.set_state(NexusState::Degraded);
 
                 if let Err(e) = self.sync_labels().await {
                     error!("Failed to sync labels {:?}", e);
                     // todo: how to signal this?
                 }
 
-                Ok(self.state)
+                Ok(self.status())
             }
             Err(e) => {
                 if let Err(err) = bdev_destroy(uri).await {
@@ -198,11 +202,11 @@ impl Nexus {
     pub async fn offline_child(
         &mut self,
         name: &str,
-    ) -> Result<NexusState, Error> {
+    ) -> Result<NexusStatus, Error> {
         trace!("{}: Offline child request for {}", self.name, name);
 
         if let Some(child) = self.children.iter_mut().find(|c| c.name == name) {
-            child.close();
+            child.offline();
         } else {
             return Err(Error::ChildNotFound {
                 name: self.name.clone(),
@@ -212,7 +216,7 @@ impl Nexus {
 
         self.stop_rebuild(name).await?;
         self.reconfigure(DREvent::ChildOffline).await;
-        Ok(self.set_state(NexusState::Degraded))
+        Ok(self.status())
     }
 
     /// online a child and reconfigure the IO channels. The child is already
@@ -221,25 +225,17 @@ impl Nexus {
     pub async fn online_child(
         &mut self,
         name: &str,
-    ) -> Result<NexusState, Error> {
+    ) -> Result<NexusStatus, Error> {
         trace!("{} Online child request", self.name);
 
         if let Some(child) = self.children.iter_mut().find(|c| c.name == name) {
-            if child.state != ChildState::Closed {
-                Err(Error::ChildNotClosed {
-                    name: self.name.clone(),
-                    child: name.to_owned(),
-                })
-            } else {
-                child.open(self.size).context(OpenChild {
-                    child: name.to_owned(),
-                    name: self.name.clone(),
-                })?;
-                child.state = ChildState::Faulted;
-                let nexus_state = self.set_state(NexusState::Degraded);
-                self.start_rebuild(name).await?;
-                Ok(nexus_state)
-            }
+            child.online(self.size).context(OpenChild {
+                child: name.to_owned(),
+                name: self.name.clone(),
+            })?;
+            child.out_of_sync(true);
+            self.start_rebuild_rpc(name).await?;
+            Ok(self.status())
         } else {
             Err(Error::ChildNotFound {
                 name: self.name.clone(),
@@ -347,38 +343,76 @@ impl Nexus {
         Ok(())
     }
 
-    /// read labels from the children devices, we fail the operation if:
-    ///
-    /// (1) a child does not have valid label
-    /// (2) if any label does not match the label of the first child
-
-    pub async fn update_child_labels(&mut self) -> Result<NexusLabel, Error> {
+    /// Read labels from all child devices
+    async fn get_child_labels(&self) -> Vec<NexusChildLabel<'_>> {
         let mut futures = Vec::new();
         self.children
-            .iter_mut()
-            .map(|child| futures.push(child.probe_label()))
+            .iter()
+            .map(|child| futures.push(child.get_label()))
             .for_each(drop);
+        join_all(futures).await
+    }
 
-        let (ok_res, mut err_res): (Vec<_>, Vec<_>) =
-            join_all(futures).await.into_iter().partition(Result::is_ok);
-        if let Some(Err(err)) = err_res.pop() {
-            // pick the first error
-            return Err(err).context(ReadLabel {
-                name: self.name.clone(),
-            });
+    /// Update labels of child devices as required:
+    /// (1) Update any child that does not have valid label.
+    /// (2) Upate all children with a new label if existing (valid) labels
+    ///     are not all identical.
+    ///
+    /// Return the resulting label.
+    pub async fn update_child_labels(
+        &mut self,
+    ) -> Result<NexusLabel, LabelError> {
+        // Get a list of all children and their labels
+        let list = self.get_child_labels().await;
+
+        // Search for first "valid" label
+        if let Some(target) = NexusChildLabel::find_target_label(&list) {
+            // Check that all "valid" labels are equal
+            if NexusChildLabel::compare_labels(&target, &list) {
+                let (_valid, invalid): (
+                    Vec<NexusChildLabel>,
+                    Vec<NexusChildLabel>,
+                ) = list.into_iter().partition(|label| {
+                    label.get_label_status() == NexusLabelStatus::Both
+                });
+
+                if invalid.is_empty() {
+                    info!(
+                        "{}: All child disk labels are valid and consistent",
+                        self.name
+                    );
+                } else {
+                    // Write out (only) those labels that require updating
+                    info!(
+                        "{}: Replacing missing/invalid child disk labels",
+                        self.name
+                    );
+                    self.write_labels(&target, &invalid).await?
+                }
+
+                // TODO: When the GUID does not match the given UUID.
+                // it means that the PVC has been recreated.
+                // We should consider also updating the labels in such a case.
+
+                info!("{}: existing label:\n{}", self.name, target);
+                return Ok(target);
+            }
+
+            info!("{}: Child disk labels do not match, writing new label to all children", self.name);
+        } else {
+            info!("{}: Child disk labels invalid or absent, writing new label to all children", self.name);
         }
 
-        let mut ret: Vec<NexusLabel> =
-            ok_res.into_iter().map(Result::unwrap).collect();
+        // Either there are no valid labels or there
+        // are some valid labels that do not agree.
+        // Generate a new label ...
+        let label = self.generate_label();
 
-        // verify that all labels are equal
-        if ret.iter().skip(1).any(|e| e != &ret[0]) {
-            return Err(Error::CheckLabels {
-                name: self.name.clone(),
-            });
-        }
+        // ... and write it out to ALL children.
+        self.write_all_labels(&label).await?;
 
-        Ok(ret.pop().unwrap())
+        info!("{}: new label:\n{}", self.name, label);
+        Ok(label)
     }
 
     /// The nexus is allowed to be smaller then the underlying child devices

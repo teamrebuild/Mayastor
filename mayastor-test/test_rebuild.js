@@ -2,7 +2,6 @@
 
 'use strict';
 
-const { createClient } = require('grpc-kit');
 const async = require('async');
 const fs = require('fs');
 const common = require('./test_common');
@@ -10,7 +9,7 @@ const path = require('path');
 const assert = require('chai').assert;
 const sleep = require('sleep-promise');
 const grpc = require('grpc-uds');
-const grpc_promise = require('grpc-promise');
+const grpcPromise = require('grpc-promise');
 const protoLoader = require('@grpc/proto-loader');
 
 // backend file for aio bdev
@@ -64,63 +63,31 @@ const configNexus = `
   QueueDepth 1
 `;
 
-// The config just for nvmf target which cannot run in the same process as
-// the nvmf initiator (SPDK limitation).
-const configNvmfTarget = `
-[Malloc]
-  NumberOfLuns 1
-  LunSizeInMB  64
-  BlockSize    4096
-
-[Nvmf]
-  AcceptorPollRate 10000
-  ConnectionScheduler RoundRobin
-
-[Transport]
-  Type TCP
-  # reduce memory requirements
-  NumSharedBuffers 32
-
-[Subsystem1]
-  NQN nqn.2019-05.io.openebs:disk2
-  Listen TCP 127.0.0.1:8420
-  AllowAnyHost Yes
-  SN MAYASTOR0000000001
-  MN NEXUSController1
-  MaxNamespaces 1
-  Namespace Malloc0 1
-
-# although not used we still have to reduce mem requirements for iSCSI
-[iSCSI]
-  MaxSessions 1
-  MaxConnectionsPerSession 1
-`;
-
 const nexusArgs = {
   uuid: UUID,
   size: 131072,
-  children: [`aio:///${child1}?blk_size=4096`],
+  children: [`aio:///${child1}?blk_size=4096`]
 };
 
 const rebuildArgs = {
   uuid: UUID,
-  uri: `aio:///${child2}?blk_size=4096`,
+  uri: `aio:///${child2}?blk_size=4096`
 };
 
 const childOnlineArgs = {
   uuid: UUID,
   uri: `aio:///${child2}?blk_size=4096`,
-  action: 1,
+  action: 1
 };
 
 const childOfflineArgs = {
   uuid: UUID,
   uri: `aio:///${child2}?blk_size=4096`,
-  action: 0,
+  action: 0
 };
 
-function createGrpcClient() {
-  const PROTO_PATH = __dirname + '/../rpc/proto/mayastor_service.proto';
+function createGrpcClient () {
+  const PROTO_PATH = path.join(__dirname, '/../rpc/proto/mayastor_service.proto');
 
   // Load mayastor proto file with mayastor service
   const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
@@ -128,21 +95,21 @@ function createGrpcClient() {
     longs: Number,
     enums: String,
     defaults: true,
-    oneofs: true,
+    oneofs: true
   });
 
   const mayastor = grpc.loadPackageDefinition(packageDefinition)
     .mayastor_service;
 
-  let client = new mayastor.Mayastor(
-    common.endpoint,
+  const client = new mayastor.Mayastor(
+    common.grpcEndpoint,
     grpc.credentials.createInsecure()
   );
-  grpc_promise.promisifyAll(client);
+  grpcPromise.promisifyAll(client);
   return client;
 }
 
-describe('rebuild tests', function() {
+describe('rebuild tests', function () {
   var client;
 
   this.timeout(10000); // for network tests we need long timeouts
@@ -150,40 +117,40 @@ describe('rebuild tests', function() {
   var ObjectType = {
     NEXUS: 0,
     SOURCE_CHILD: 1,
-    DESTINATION_CHILD: 2,
+    DESTINATION_CHILD: 2
   };
 
-  async function checkState(childType, expectedState) {
-    let res = await client.listNexus().sendMessage(rebuildArgs);
+  async function checkState (childType, expectedState) {
+    const res = await client.listNexus().sendMessage(rebuildArgs);
     assert.lengthOf(res.nexusList, 1);
 
-    let nexus = res.nexusList[0];
+    const nexus = res.nexusList[0];
     assert.equal(nexus.uuid, UUID);
 
-    if (childType == ObjectType.NEXUS) {
+    if (childType === ObjectType.NEXUS) {
       assert.equal(nexus.state, expectedState);
-    } else if (childType == ObjectType.SOURCE_CHILD) {
+    } else if (childType === ObjectType.SOURCE_CHILD) {
       assert.equal(nexus.children[0].state, expectedState);
-    } else if (childType == ObjectType.DESTINATION_CHILD) {
+    } else if (childType === ObjectType.DESTINATION_CHILD) {
       assert.equal(nexus.children[1].state, expectedState);
     }
   }
 
-  async function checkNumRebuilds(expected) {
-    let res = await client.listNexus().sendMessage(rebuildArgs);
+  async function checkNumRebuilds (expected) {
+    const res = await client.listNexus().sendMessage(rebuildArgs);
     assert.lengthOf(res.nexusList, 1);
 
-    let nexus = res.nexusList[0];
+    const nexus = res.nexusList[0];
     assert.equal(nexus.uuid, UUID);
     assert.equal(nexus.rebuilds, expected);
   }
 
-  async function checkRebuildState(expected) {
-    let res = await client.getRebuildState().sendMessage(rebuildArgs);
+  async function checkRebuildState (expected) {
+    const res = await client.getRebuildState().sendMessage(rebuildArgs);
     assert.equal(res.state, expected);
   }
 
-  function pingMayastor(done) {
+  function pingMayastor (done) {
     // use harmless method to test if the mayastor is up and running
     client
       .listPools()
@@ -232,7 +199,7 @@ describe('rebuild tests', function() {
               next();
             })
             .catch(done);
-        },
+        }
       ],
       done
     );
@@ -244,10 +211,10 @@ describe('rebuild tests', function() {
         common.stopAll,
         common.restoreNbdPerms,
         (next) => {
-          fs.unlink(child1, (err) => next());
+          fs.unlink(child1, (err) => next()); // eslint-disable-line handle-callback-err
         },
         (next) => {
-          fs.unlink(child2, (err) => next());
+          fs.unlink(child2, (err) => next()); // eslint-disable-line handle-callback-err
         },
         (next) => {
           client
@@ -256,11 +223,11 @@ describe('rebuild tests', function() {
             .then(() => {
               next();
             })
-            .catch((err) => {
+            .catch((err) => { // eslint-disable-line handle-callback-err
               done();
             })
             .catch(done);
-        },
+        }
       ],
       (err) => {
         if (client != null) {
@@ -271,7 +238,7 @@ describe('rebuild tests', function() {
     );
   });
 
-  describe('running rebuild', function() {
+  describe('running rebuild', function () {
     beforeEach(async () => {
       await client.addChildNexus().sendMessage(rebuildArgs);
       await client.startRebuild().sendMessage(rebuildArgs);
@@ -287,11 +254,19 @@ describe('rebuild tests', function() {
     });
 
     it('check source state', async () => {
-      await checkState(ObjectType.SOURCE_CHILD, 'open');
+      await checkState(ObjectType.SOURCE_CHILD, 'online');
     });
 
     it('check destination state', async () => {
-      await checkState(ObjectType.DESTINATION_CHILD, 'faulted');
+      await checkState(ObjectType.DESTINATION_CHILD, 'degraded');
+    });
+
+    it('check rebuild state', async () => {
+      await checkRebuildState('running');
+    });
+
+    it('check number of rebuilds', async () => {
+      await checkNumRebuilds('1');
     });
 
     it('check rebuild state', async () => {
@@ -303,13 +278,13 @@ describe('rebuild tests', function() {
     });
   });
 
-  describe('stopping rebuild', function() {
+  describe('stopping rebuild', function () {
     beforeEach(async () => {
       await client.addChildNexus().sendMessage(rebuildArgs);
       await client.startRebuild().sendMessage(rebuildArgs);
       await client.stopRebuild().sendMessage(rebuildArgs);
       // TODO: Check for rebuild stop rather than sleeping
-      await sleep(1000); // Give time for the rebuild to stop
+      await sleep(250); // Give time for the rebuild to stop
     });
 
     afterEach(async () => {
@@ -321,11 +296,11 @@ describe('rebuild tests', function() {
     });
 
     it('check source state', async () => {
-      await checkState(ObjectType.SOURCE_CHILD, 'open');
+      await checkState(ObjectType.SOURCE_CHILD, 'online');
     });
 
     it('check destination state', async () => {
-      await checkState(ObjectType.DESTINATION_CHILD, 'faulted');
+      await checkState(ObjectType.DESTINATION_CHILD, 'degraded');
     });
 
     it('check rebuild state', async (done) => {
@@ -359,7 +334,7 @@ describe('rebuild tests', function() {
     afterEach(async () => {
       await client.stopRebuild().sendMessage(rebuildArgs);
       // TODO: Check for rebuild stop rather than sleeping
-      await sleep(1000); // Give time for the rebuild to stop
+      await sleep(250); // Give time for the rebuild to stop
       await client.removeChildNexus().sendMessage(rebuildArgs);
     });
 
@@ -368,11 +343,11 @@ describe('rebuild tests', function() {
     });
 
     it('check source state', async () => {
-      await checkState(ObjectType.SOURCE_CHILD, 'open');
+      await checkState(ObjectType.SOURCE_CHILD, 'online');
     });
 
     it('check destination state', async () => {
-      await checkState(ObjectType.DESTINATION_CHILD, 'faulted');
+      await checkState(ObjectType.DESTINATION_CHILD, 'degraded');
     });
 
     it('check rebuild state', async () => {
@@ -395,7 +370,7 @@ describe('rebuild tests', function() {
     afterEach(async () => {
       await client.stopRebuild().sendMessage(rebuildArgs);
       // TODO: Check for rebuild stop rather than sleeping
-      await sleep(1000); // Give time for the rebuild to stop
+      await sleep(250); // Give time for the rebuild to stop
       await client.removeChildNexus().sendMessage(rebuildArgs);
     });
 
@@ -404,11 +379,11 @@ describe('rebuild tests', function() {
     });
 
     it('check source state', async () => {
-      await checkState(ObjectType.SOURCE_CHILD, 'open');
+      await checkState(ObjectType.SOURCE_CHILD, 'online');
     });
 
     it('check destination state', async () => {
-      await checkState(ObjectType.DESTINATION_CHILD, 'faulted');
+      await checkState(ObjectType.DESTINATION_CHILD, 'degraded');
     });
 
     it('check rebuild state', async () => {
@@ -437,11 +412,11 @@ describe('rebuild tests', function() {
     });
 
     it('check source state', async () => {
-      await checkState(ObjectType.SOURCE_CHILD, 'open');
+      await checkState(ObjectType.SOURCE_CHILD, 'online');
     });
 
     it('check destination state', async () => {
-      await checkState(ObjectType.DESTINATION_CHILD, 'faulted');
+      await checkState(ObjectType.DESTINATION_CHILD, 'degraded');
     });
 
     it('check rebuild state', async () => {
@@ -469,11 +444,11 @@ describe('rebuild tests', function() {
     });
 
     it('check source state', async () => {
-      await checkState(ObjectType.SOURCE_CHILD, 'open');
+      await checkState(ObjectType.SOURCE_CHILD, 'online');
     });
 
     it('check destination state', async () => {
-      await checkState(ObjectType.DESTINATION_CHILD, 'closed');
+      await checkState(ObjectType.DESTINATION_CHILD, 'degraded');
     });
 
     it('check number of rebuilds', async () => {
