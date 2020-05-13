@@ -652,7 +652,7 @@ module.exports = function () {
 
         sinon.assert.calledOnce(stub1);
         sinon.assert.calledWithMatch(stub1, 'unpublishNexus', { uuid: UUID });
-        expect(volume.nexus.devicePath).to.have.lengthOf(0);
+        expect(volume.nexus.devicePath).to.be.empty();
         expect(volEvents).to.have.lengthOf(1);
       });
 
@@ -703,8 +703,8 @@ module.exports = function () {
         sinon.assert.calledWithMatch(stub2, 'destroyReplica', { uuid: UUID });
         sinon.assert.notCalled(stub3);
 
-        expect(volumes.get(UUID)).to.equal(null);
-        expect(volume.nexus).to.equal(null);
+        expect(volumes.get(UUID)).to.be.null();
+        expect(volume.nexus).to.be.null();
         expect(Object.keys(volume.replicas)).to.have.length(0);
         // 1 replica, 1 nexus and 1 del volume event
         expect(volEvents).to.have.lengthOf(3);
@@ -714,7 +714,7 @@ module.exports = function () {
         stub1.onCall(0).resolves({});
         stub2.onCall(0).resolves({});
         stub3.onCall(0).resolves({});
-        expect(volumes.get(UUID)).to.equal(null);
+        expect(volumes.get(UUID)).to.be.null();
 
         await volumes.destroyVolume(UUID);
 
