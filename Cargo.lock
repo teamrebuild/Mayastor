@@ -115,21 +115,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "atomic-array"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd13578f310af33a2a806d2f83faad80ed4d38085b70839660c847f0a09beebf"
-dependencies = [
- "atomic-ref2",
-]
-
-[[package]]
-name = "atomic-ref2"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d1ffd1750a574914076b9fb8811acf312d6b416f1f36f99cf11759284959323"
-
-[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -538,17 +523,6 @@ dependencies = [
  "darling_core",
  "quote 0.6.13",
  "syn 0.15.44",
-]
-
-[[package]]
-name = "derivative"
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb582b60359da160a9477ee80f15c8d784c477e69c217ef2cdd4169c24ea380f"
-dependencies = [
- "proc-macro2 1.0.10",
- "quote 1.0.3",
- "syn 1.0.17",
 ]
 
 [[package]]
@@ -1153,7 +1127,6 @@ dependencies = [
  "assert_matches",
  "async-std",
  "async-task",
- "atomic-array",
  "bincode",
  "byte-unit",
  "bytes 0.4.12",
@@ -1161,7 +1134,6 @@ dependencies = [
  "crc",
  "crossbeam",
  "crossbeam-sync",
- "derivative",
  "env_logger 0.7.1",
  "futures",
  "futures-timer",
