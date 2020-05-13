@@ -93,10 +93,30 @@ impl Nexus {
     ///
     /// The child may require a rebuild first, so the nexus will
     /// transition to degraded mode when the addition has been successful.
+    /// The rebuild flag dictates wether we attempt to start the rebuild or not
+    /// If the rebuild fails to starts the child remains degraded until such
+    /// time the rebuild is retried and complete
     pub async fn add_child(
         &mut self,
         uri: &str,
         rebuild: bool,
+    ) -> Result<NexusStatus, Error> {
+        let status = self.add_child_only(uri).await?;
+
+        if rebuild {
+            if let Err(e) = self.start_rebuild(&uri) {
+                // todo: CAS-253 retry starting the rebuild again when ready
+                error!("Child added but rebuild failed to start: {}", e);
+            }
+        }
+        Ok(status)
+    }
+
+    /// The child may require a rebuild first, so the nexus will
+    /// transition to degraded mode when the addition has been successful.
+    async fn add_child_only(
+        &mut self,
+        uri: &str,
     ) -> Result<NexusStatus, Error> {
         let name = bdev_create(&uri).await.context(CreateChild {
             name: self.name.clone(),
@@ -153,17 +173,6 @@ impl Nexus {
                 if let Err(e) = self.sync_labels().await {
                     error!("Failed to sync labels {:?}", e);
                     // todo: how to signal this?
-                }
-
-                if rebuild {
-                    if let Err(e) = self.start_rebuild(&name) {
-                        error!(
-                            "Failed to automatically start the rebuild: {}",
-                            e
-                        );
-                        // todo: How to notify the control plane?
-                        // or fail the add even?
-                    }
                 }
 
                 Ok(self.status())
