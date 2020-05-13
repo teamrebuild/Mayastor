@@ -123,12 +123,12 @@ fn multiple_locks() {
     }
 }
 
-#[async_std::test]
+#[test]
 // Test multiple lock requests for an overlapping LBA range with unlocking.
 // The first lock is acquired and only unlocked after the timer times out.
 // Whilst the first lock is held, the second lock request should be blocked.
 // The second lock request should only succeed after the first lock is unlocked.
-async fn multiple_locks_with_unlocks() {
+fn multiple_locks_with_unlocks() {
     let (s, r) = unbounded::<()>();
     let (timer_sender, timer_receiver) = oneshot::channel::<()>();
 
