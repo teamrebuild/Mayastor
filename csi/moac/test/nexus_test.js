@@ -43,7 +43,7 @@ module.exports = function () {
         expect(ev.eventType).to.equal('del');
         expect(ev.object).to.equal(nexus);
         setTimeout(() => {
-          expect(nexus.node).to.be.null();
+          expect(nexus.node).to.equal(null);
           done();
         }, 0);
       });
@@ -372,7 +372,7 @@ module.exports = function () {
       });
       sinon.assert.calledOnce(callStub);
       sinon.assert.calledWith(callStub, 'destroyNexus', { uuid: UUID });
-      expect(nexus.node).to.be.null();
+      expect(nexus.node).to.equal(null);
       expect(node.nexus).to.have.lengthOf(0);
     });
 
@@ -402,7 +402,7 @@ module.exports = function () {
       });
       sinon.assert.calledOnce(callStub);
       sinon.assert.calledWith(callStub, 'destroyNexus', { uuid: UUID });
-      expect(nexus.node).to.be.null();
+      expect(nexus.node).to.equal(null);
       expect(node.nexus).to.have.lengthOf(0);
     });
   });
