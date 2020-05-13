@@ -17,7 +17,8 @@
 //!
 //! `add_child` will construct a new `NexusChild` and add the bdev given by the
 //! uri to the nexus. The nexus will transition to degraded mode as the new
-//! child requires rebuild first.
+//! child requires rebuild first. If the rebuild flag is set then the rebuild
+//! is also started otherwise it has to be started through `start_rebuild`.
 //!
 //! When reconfiguring the nexus, we traverse all our children, create new IO
 //! channels for all children that are in the open state.
@@ -92,12 +93,14 @@ impl Nexus {
     ///
     /// The child may require a rebuild first, so the nexus will
     /// transition to degraded mode when the addition has been successful.
-    pub async fn add_child(&mut self, uri: &str) -> Result<NexusStatus, Error> {
+    pub async fn add_child(
+        &mut self,
+        uri: &str,
+        rebuild: bool,
+    ) -> Result<NexusStatus, Error> {
         let name = bdev_create(&uri).await.context(CreateChild {
             name: self.name.clone(),
         })?;
-
-        trace!("adding child {} to nexus {}", name, self.name);
 
         let child_bdev = match Bdev::lookup_by_name(&name) {
             Some(child) => {
@@ -150,6 +153,17 @@ impl Nexus {
                 if let Err(e) = self.sync_labels().await {
                     error!("Failed to sync labels {:?}", e);
                     // todo: how to signal this?
+                }
+
+                if rebuild {
+                    if let Err(e) = self.start_rebuild(&name) {
+                        error!(
+                            "Failed to automatically start the rebuild: {}",
+                            e
+                        );
+                        // todo: How to notify the control plane?
+                        // or fail the add even?
+                    }
                 }
 
                 Ok(self.status())
@@ -234,7 +248,7 @@ impl Nexus {
                 name: self.name.clone(),
             })?;
             child.out_of_sync(true);
-            self.start_rebuild_rpc(name).await?;
+            self.start_rebuild(name).map(|_| {})?;
             Ok(self.status())
         } else {
             Err(Error::ChildNotFound {

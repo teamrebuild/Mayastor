@@ -87,14 +87,12 @@ fn rebuild_child_faulted() {
         let nexus = nexus_lookup(NEXUS_NAME).unwrap();
         nexus
             .start_rebuild(&get_dev(1))
-            .await
             .expect_err("Rebuild only degraded children!");
 
         nexus.remove_child(&get_dev(1)).await.unwrap();
         assert_eq!(nexus.children.len(), 1);
         nexus
             .start_rebuild(&get_dev(0))
-            .await
             .expect_err("Cannot rebuild from the same child");
 
         nexus.destroy().await.unwrap();
@@ -179,8 +177,7 @@ async fn nexus_create(children: u64) {
 async fn nexus_add_child(new_child: u64, wait: bool) {
     let nexus = nexus_lookup(NEXUS_NAME).unwrap();
 
-    nexus.add_child(&get_dev(new_child)).await.unwrap();
-    let _ = nexus.start_rebuild(&get_dev(new_child)).await.unwrap();
+    nexus.add_child(&get_dev(new_child), true).await.unwrap();
 
     if wait {
         common::wait_for_rebuild(
