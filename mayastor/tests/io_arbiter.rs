@@ -217,7 +217,6 @@ fn multiple_locks_with_unlocks() {
             trace!("fut1: ACQUIRED LOCK");
 
             // Wait for timer to expire before unlocking
-            //let _ = timer_receiver.recv();
             sleep(Duration::from_secs(1));
             arbiter.unlock(&mut ctx).await;
             trace!("fut1: RELEASED LOCK");
