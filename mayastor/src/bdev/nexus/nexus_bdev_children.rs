@@ -94,7 +94,7 @@ impl Nexus {
     /// The child may require a rebuild first, so the nexus will
     /// transition to degraded mode when the addition has been successful.
     /// The rebuild flag dictates wether we attempt to start the rebuild or not
-    /// If the rebuild fails to starts the child remains degraded until such
+    /// If the rebuild fails to start the child remains degraded until such
     /// time the rebuild is retried and complete
     pub async fn add_child(
         &mut self,
