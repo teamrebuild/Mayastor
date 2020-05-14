@@ -268,14 +268,6 @@ describe('rebuild tests', function () {
     it('check number of rebuilds', async () => {
       await checkNumRebuilds('1');
     });
-
-    it('check rebuild state', async () => {
-      await checkRebuildState('running');
-    });
-
-    it('check number of rebuilds', async () => {
-      await checkNumRebuilds('1');
-    });
   });
 
   describe('stopping rebuild', function () {

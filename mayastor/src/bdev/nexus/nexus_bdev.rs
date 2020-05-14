@@ -764,9 +764,6 @@ impl Nexus {
         channels: &NexusChannelInner,
     ) {
         let mut io = Bio(pio);
-
-        println!("IO SIZE: offset: {}, len: {}", io.offset(), io.num_blocks());
-
         // in case of writes, we want to write to all underlying children
         io.ctx_as_mut_ref().in_flight = channels.ch.len() as i8;
         let results = channels
