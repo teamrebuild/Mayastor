@@ -49,6 +49,32 @@ fn rebuild_test() {
 }
 
 #[test]
+// test the rebuild flag of the add_child operation
+fn rebuild_test_add() {
+    test_ini();
+
+    Reactor::block_on(async {
+        nexus_create(1).await;
+        let nexus = nexus_lookup(NEXUS_NAME).unwrap();
+
+        nexus.add_child(&get_dev(1), true).await.unwrap();
+        nexus
+            .start_rebuild(&get_dev(1))
+            .expect_err("rebuild expected to be present");
+        nexus_test_child(1).await;
+
+        nexus.add_child(&get_dev(2), false).await.unwrap();
+        let _ = nexus
+            .start_rebuild(&get_dev(2))
+            .expect("rebuild not expected to be present");
+
+        nexus_lookup(NEXUS_NAME).unwrap().destroy().await.unwrap();
+    });
+
+    test_fini();
+}
+
+#[test]
 fn rebuild_progress() {
     test_ini();
 
