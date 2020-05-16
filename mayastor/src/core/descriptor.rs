@@ -3,6 +3,9 @@ use std::{convert::TryFrom, fmt::Debug};
 use serde::export::{fmt::Error, Formatter};
 
 use spdk_sys::{
+    bdev_lock_lba_range,
+    bdev_unlock_lba_range,
+    lock_range_cb,
     spdk_bdev_close,
     spdk_bdev_desc,
     spdk_bdev_desc_get_bdev,
@@ -15,6 +18,17 @@ use crate::{
     bdev::nexus::nexus_module::NEXUS_MODULE,
     core::{channel::IoChannel, Bdev, BdevHandle, CoreError},
 };
+use futures::{channel::mpsc, StreamExt};
+
+#[derive(Debug)]
+pub struct RangeContext {
+    offset: u64,
+    len: u64,
+    io_channel: IoChannel,
+    cb_fn: lock_range_cb,
+    sender: *mut mpsc::Sender<u64>,
+    receiver: mpsc::Receiver<u64>,
+}
 
 /// NewType around a descriptor, multiple descriptor to the same bdev is
 /// allowed. A bdev can me claimed for exclusive write access. Any existing
@@ -88,6 +102,63 @@ impl Descriptor {
     pub fn into_handle(self) -> Result<BdevHandle, CoreError> {
         BdevHandle::try_from(self)
     }
+
+    /// Gain exclusive access over a block range.
+    /// The returned context MUST be used by the corresponding call to unlock.
+    pub async fn lock_lba_range(
+        &mut self,
+        offset: u64,
+        len: u64,
+    ) -> RangeContext {
+        let mut ctx = self.new_range_context(offset, len);
+        unsafe {
+            let rc = bdev_lock_lba_range(
+                self.as_ptr(),
+                ctx.io_channel.as_ptr(),
+                ctx.offset,
+                ctx.len,
+                ctx.cb_fn,
+                ctx.sender as *mut _,
+            );
+            assert!(rc == 0, "Return code: {}", rc);
+
+            let rc = ctx.receiver.next().await.unwrap();
+            assert!(rc == 0, "Return code: {}", rc);
+        }
+        ctx
+    }
+
+    /// Release exclusive access over a block range.
+    /// The supplied context must match the one returned by the call to lock.
+    pub async fn unlock_lba_range(&mut self, ctx: &mut RangeContext) {
+        unsafe {
+            let rc = bdev_unlock_lba_range(
+                self.as_ptr(),
+                ctx.io_channel.as_ptr(),
+                ctx.offset,
+                ctx.len,
+                ctx.cb_fn,
+                ctx.sender as *mut _,
+            );
+            assert!(rc == 0, "Return code: {}", rc);
+
+            let rc = ctx.receiver.next().await.unwrap();
+            assert!(rc == 0, "Return code: {}", rc);
+        }
+    }
+
+    /// Initialise a context for use by the lock and unlock functions
+    fn new_range_context(&self, offset: u64, len: u64) -> RangeContext {
+        let (s, r) = mpsc::channel::<u64>(0);
+        RangeContext {
+            offset,
+            len,
+            io_channel: self.get_channel().unwrap(),
+            cb_fn: Some(spdk_cb),
+            sender: Box::into_raw(Box::new(s)),
+            receiver: r,
+        }
+    }
 }
 
 impl Drop for Descriptor {
@@ -107,5 +178,18 @@ impl Debug for Descriptor {
             self.as_ptr(),
             self.get_bdev().name()
         )
+    }
+}
+
+extern "C" fn spdk_cb(
+    ctx: *mut ::std::os::raw::c_void,
+    status: ::std::os::raw::c_int,
+) {
+    unsafe {
+        trace!("Callback status {}", status as u64);
+        let s = ctx as *mut mpsc::Sender<u64>;
+        if let Err(e) = (*s).start_send(status as u64) {
+            panic!("Failed to send SPDK completion with error {}.", e);
+        }
     }
 }

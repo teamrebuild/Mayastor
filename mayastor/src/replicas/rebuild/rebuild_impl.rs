@@ -205,6 +205,11 @@ impl RebuildJob {
             &mut self.tasks.buffers[id as usize]
         };
 
+        let mut nexus_desc = Bdev::open_by_name(&self.nexus, true).unwrap();
+        let mut ctx = nexus_desc
+            .lock_lba_range(blk, copy_buffer.len() as u64 / self.block_size)
+            .await;
+
         self.source_hdl
             .read_at(blk * self.block_size, &mut copy_buffer)
             .await
@@ -219,6 +224,7 @@ impl RebuildJob {
                 bdev: &self.destination,
             })?;
 
+        nexus_desc.unlock_lba_range(&mut ctx).await;
         Ok(())
     }
 
