@@ -19,6 +19,7 @@ use crate::{
     core::{channel::IoChannel, Bdev, BdevHandle, CoreError},
 };
 use futures::{channel::mpsc, StreamExt};
+use std::sync::Arc;
 
 /// NewType around a descriptor, multiple descriptor to the same bdev is
 /// allowed. A bdev can me claimed for exclusive write access. Any existing
@@ -166,7 +167,7 @@ impl Debug for Descriptor {
     }
 }
 
-extern "C" fn spdk_cb(
+extern "C" fn spdk_range_cb(
     ctx: *mut ::std::os::raw::c_void,
     status: ::std::os::raw::c_int,
 ) {
@@ -183,7 +184,7 @@ extern "C" fn spdk_cb(
 pub struct RangeContext {
     pub offset: u64,
     pub len: u64,
-    io_channel: IoChannel,
+    io_channel: Arc<IoChannel>,
     cb_fn: lock_range_cb,
     sender: *mut mpsc::Sender<i32>,
     receiver: mpsc::Receiver<i32>,
@@ -191,13 +192,13 @@ pub struct RangeContext {
 
 impl RangeContext {
     /// Create a new RangeContext
-    pub fn new(offset: u64, len: u64, io_ch: IoChannel) -> RangeContext {
+    pub fn new(offset: u64, len: u64, io_ch: Arc<IoChannel>) -> RangeContext {
         let (s, r) = mpsc::channel::<i32>(0);
         RangeContext {
             offset,
             len,
             io_channel: io_ch,
-            cb_fn: Some(spdk_cb),
+            cb_fn: Some(spdk_range_cb),
             sender: Box::into_raw(Box::new(s)),
             receiver: r,
         }

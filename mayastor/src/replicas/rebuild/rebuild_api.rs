@@ -1,12 +1,13 @@
 #![warn(missing_docs)]
 
-use crate::core::{BdevHandle, CoreError, DmaError};
+use crate::core::{BdevHandle, CoreError, DmaError, IoChannel};
 use crossbeam::channel::{Receiver, Sender};
 use futures::channel::oneshot;
 use snafu::Snafu;
 use std::fmt;
 
 use super::rebuild_impl::*;
+use std::sync::Arc;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub(crate)")]
@@ -20,6 +21,8 @@ pub enum RebuildError {
     InvalidParameters {},
     #[snafu(display("Failed to get a handle for bdev {}", bdev))]
     NoBdevHandle { source: CoreError, bdev: String },
+    #[snafu(display("Bdev {} not found", bdev))]
+    BdevNotFound { source: CoreError, bdev: String },
     #[snafu(display("IO failed for bdev {}", bdev))]
     IoError { source: CoreError, bdev: String },
     #[snafu(display("Failed to find rebuild job {}", job))]
@@ -37,9 +40,10 @@ pub enum RebuildError {
     #[snafu(display("Existing pending state {}", state,))]
     StatePending { state: String },
     #[snafu(display(
-        "Failed to lock LBA range for blk {}, len {} ",
+        "Failed to lock LBA range for blk {}, len {}, with error: {}",
         blk,
-        len
+        len,
+        source,
     ))]
     RangeLockError {
         blk: u64,
@@ -47,9 +51,10 @@ pub enum RebuildError {
         source: std::io::Error,
     },
     #[snafu(display(
-        "Failed to unlock LBA range for blk {}, len {} ",
+        "Failed to unlock LBA range for blk {}, len {}, with error: {}",
         blk,
-        len
+        len,
+        source,
     ))]
     RangeUnLockError {
         blk: u64,
@@ -114,6 +119,8 @@ pub struct RebuildJob {
     pub(super) states: RebuildStates,
     /// channel list which allows the await of the rebuild
     pub(super) complete_chan: Vec<oneshot::Sender<RebuildState>>,
+    /// I/O channel to the nexus
+    pub(super) nexus_channel: Arc<IoChannel>,
 }
 
 /// rebuild statistics

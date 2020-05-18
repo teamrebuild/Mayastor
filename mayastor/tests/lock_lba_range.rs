@@ -18,7 +18,7 @@ use mayastor::{
 };
 use std::sync::{Arc, Mutex};
 
-const NEXUS_NAME: &str = "arbiter_nexus";
+const NEXUS_NAME: &str = "lba_range_nexus";
 const NEXUS_SIZE: u64 = 10 * 1024 * 1024;
 const NUM_NEXUS_CHILDREN: u64 = 2;
 
@@ -59,10 +59,9 @@ async fn create_nexus() {
         ch.push(get_dev(i));
     }
 
-    match nexus_create(NEXUS_NAME, NEXUS_SIZE, None, &ch).await {
-        Ok(_) => println!("Created nexus"),
-        Err(e) => println!("Failed to create nexus: {}", e),
-    }
+    nexus_create(NEXUS_NAME, NEXUS_SIZE, None, &ch)
+        .await
+        .unwrap();
 }
 
 fn get_shareable_ctx(offset: u64, len: u64) -> Arc<Mutex<RangeContext>> {
@@ -70,7 +69,7 @@ fn get_shareable_ctx(offset: u64, len: u64) -> Arc<Mutex<RangeContext>> {
     Arc::new(Mutex::new(RangeContext::new(
         offset,
         len,
-        nexus.get_channel().unwrap(),
+        Arc::new(nexus.get_channel().unwrap()),
     )))
 }
 
@@ -90,7 +89,8 @@ fn lock_unlock() {
     test_ini();
     Reactor::block_on(async {
         let mut nexus = Bdev::open_by_name(NEXUS_NAME, true).unwrap();
-        let mut ctx = RangeContext::new(1, 5, nexus.get_channel().unwrap());
+        let mut ctx =
+            RangeContext::new(1, 5, Arc::new(nexus.get_channel().unwrap()));
         let _ = nexus.lock_lba_range(&mut ctx).await;
         let _ = nexus.unlock_lba_range(&mut ctx).await;
     });
@@ -103,8 +103,10 @@ fn lock_unlock_different_context() {
     test_ini();
     Reactor::block_on(async {
         let mut nexus = Bdev::open_by_name(NEXUS_NAME, true).unwrap();
-        let mut ctx = RangeContext::new(1, 5, nexus.get_channel().unwrap());
-        let mut ctx1 = RangeContext::new(1, 5, nexus.get_channel().unwrap());
+        let mut ctx =
+            RangeContext::new(1, 5, Arc::new(nexus.get_channel().unwrap()));
+        let mut ctx1 =
+            RangeContext::new(1, 5, Arc::new(nexus.get_channel().unwrap()));
         let _ = nexus.lock_lba_range(&mut ctx).await;
         if nexus.unlock_lba_range(&mut ctx1).await.is_ok() {
             panic!("Shouldn't be able to unlock with a different context");
@@ -186,7 +188,7 @@ fn lock_then_fe_io() {
         let ctx_clone = Arc::clone(&ctx);
         reactor.send_future(async move {
             lock_range(&mut ctx_clone.lock().unwrap()).await;
-            trace!("*** HOLDING LOCK ***");
+            trace!("Lock succeeded");
             let _ = s.send(());
         });
         reactor_poll!(r);
@@ -210,20 +212,20 @@ fn lock_then_fe_io() {
         });
         reactor_poll!(1000);
 
-        // First lock is held, I/O should not succeed
+        // Lock is held, I/O should not succeed
         assert!(io_receiver.try_recv().is_err());
 
-        // First unlock
+        // Unlock
         let (s, r) = unbounded::<()>();
         let ctx_clone = Arc::clone(&ctx);
         reactor.send_future(async move {
             unlock_range(&mut ctx_clone.lock().unwrap()).await;
-            trace!("*** RELEASE LOCK ***");
+            trace!("Release lock");
             let _ = s.send(());
         });
         reactor_poll!(r);
 
-        // Fist lock release, I/O should succeed
+        // Lock released, I/O should succeed
         assert!(io_receiver.try_recv().is_ok());
     }
     test_fini();
