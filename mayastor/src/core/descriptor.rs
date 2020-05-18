@@ -94,7 +94,7 @@ impl Descriptor {
     }
 
     /// Gain exclusive access over a block range.
-    /// The returned context MUST be used by the corresponding call to unlock.
+    /// The returned context must be used by the corresponding call to unlock.
     pub async fn lock_lba_range(
         &mut self,
         ctx: &mut RangeContext,
