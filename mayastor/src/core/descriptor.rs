@@ -20,16 +20,6 @@ use crate::{
 };
 use futures::{channel::mpsc, StreamExt};
 
-#[derive(Debug)]
-pub struct RangeContext {
-    offset: u64,
-    len: u64,
-    io_channel: IoChannel,
-    cb_fn: lock_range_cb,
-    sender: *mut mpsc::Sender<u64>,
-    receiver: mpsc::Receiver<u64>,
-}
-
 /// NewType around a descriptor, multiple descriptor to the same bdev is
 /// allowed. A bdev can me claimed for exclusive write access. Any existing
 /// descriptors that are open before the bdev has been claimed will remain as
@@ -107,10 +97,8 @@ impl Descriptor {
     /// The returned context MUST be used by the corresponding call to unlock.
     pub async fn lock_lba_range(
         &mut self,
-        offset: u64,
-        len: u64,
-    ) -> RangeContext {
-        let mut ctx = self.new_range_context(offset, len);
+        ctx: &mut RangeContext,
+    ) -> Result<(), std::io::Error> {
         unsafe {
             let rc = bdev_lock_lba_range(
                 self.as_ptr(),
@@ -120,17 +108,23 @@ impl Descriptor {
                 ctx.cb_fn,
                 ctx.sender as *mut _,
             );
-            assert!(rc == 0, "Return code: {}", rc);
-
-            let rc = ctx.receiver.next().await.unwrap();
-            assert!(rc == 0, "Return code: {}", rc);
+            if rc != 0 {
+                return Err(std::io::Error::from_raw_os_error(rc));
+            }
         }
-        ctx
+        let rc = ctx.receiver.next().await.unwrap();
+        if rc != 0 {
+            return Err(std::io::Error::from_raw_os_error(rc));
+        }
+        Ok(())
     }
 
     /// Release exclusive access over a block range.
     /// The supplied context must match the one returned by the call to lock.
-    pub async fn unlock_lba_range(&mut self, ctx: &mut RangeContext) {
+    pub async fn unlock_lba_range(
+        &mut self,
+        ctx: &mut RangeContext,
+    ) -> Result<(), std::io::Error> {
         unsafe {
             let rc = bdev_unlock_lba_range(
                 self.as_ptr(),
@@ -140,24 +134,15 @@ impl Descriptor {
                 ctx.cb_fn,
                 ctx.sender as *mut _,
             );
-            assert!(rc == 0, "Return code: {}", rc);
-
-            let rc = ctx.receiver.next().await.unwrap();
-            assert!(rc == 0, "Return code: {}", rc);
+            if rc != 0 {
+                return Err(std::io::Error::from_raw_os_error(rc));
+            }
         }
-    }
-
-    /// Initialise a context for use by the lock and unlock functions
-    fn new_range_context(&self, offset: u64, len: u64) -> RangeContext {
-        let (s, r) = mpsc::channel::<u64>(0);
-        RangeContext {
-            offset,
-            len,
-            io_channel: self.get_channel().unwrap(),
-            cb_fn: Some(spdk_cb),
-            sender: Box::into_raw(Box::new(s)),
-            receiver: r,
+        let rc = ctx.receiver.next().await.unwrap();
+        if rc != 0 {
+            return Err(std::io::Error::from_raw_os_error(rc));
         }
+        Ok(())
     }
 }
 
@@ -186,10 +171,35 @@ extern "C" fn spdk_cb(
     status: ::std::os::raw::c_int,
 ) {
     unsafe {
-        trace!("Callback status {}", status as u64);
-        let s = ctx as *mut mpsc::Sender<u64>;
-        if let Err(e) = (*s).start_send(status as u64) {
+        let s = ctx as *mut mpsc::Sender<i32>;
+        if let Err(e) = (*s).start_send(status) {
             panic!("Failed to send SPDK completion with error {}.", e);
+        }
+    }
+}
+
+/// Store the context for calls to lock_lba_range and unlock_lba_range.
+/// Corresponding lock/unlock calls require the same context to be used.
+pub struct RangeContext {
+    pub offset: u64,
+    pub len: u64,
+    io_channel: IoChannel,
+    cb_fn: lock_range_cb,
+    sender: *mut mpsc::Sender<i32>,
+    receiver: mpsc::Receiver<i32>,
+}
+
+impl RangeContext {
+    /// Create a new RangeContext
+    pub fn new(offset: u64, len: u64, io_ch: IoChannel) -> RangeContext {
+        let (s, r) = mpsc::channel::<i32>(0);
+        RangeContext {
+            offset,
+            len,
+            io_channel: io_ch,
+            cb_fn: Some(spdk_cb),
+            sender: Box::into_raw(Box::new(s)),
+            receiver: r,
         }
     }
 }

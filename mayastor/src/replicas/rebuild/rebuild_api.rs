@@ -36,6 +36,26 @@ pub enum RebuildError {
     OpError { operation: String, state: String },
     #[snafu(display("Existing pending state {}", state,))]
     StatePending { state: String },
+    #[snafu(display(
+        "Failed to lock LBA range for blk {}, len {} ",
+        blk,
+        len
+    ))]
+    RangeLockError {
+        blk: u64,
+        len: u64,
+        source: std::io::Error,
+    },
+    #[snafu(display(
+        "Failed to unlock LBA range for blk {}, len {} ",
+        blk,
+        len
+    ))]
+    RangeUnLockError {
+        blk: u64,
+        len: u64,
+        source: std::io::Error,
+    },
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
