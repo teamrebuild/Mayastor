@@ -1,6 +1,6 @@
 #![warn(missing_docs)]
 
-use crate::core::{BdevHandle, CoreError, DmaError, IoChannel};
+use crate::core::{BdevHandle, CoreError, Descriptor, DmaError, IoChannel};
 use crossbeam::channel::{Receiver, Sender};
 use futures::channel::oneshot;
 use snafu::Snafu;
@@ -100,6 +100,10 @@ impl fmt::Display for RebuildState {
 pub struct RebuildJob {
     /// name of the nexus associated with the rebuild job
     pub nexus: String,
+    /// I/O channel to the nexus
+    pub(super) nexus_channel: Arc<IoChannel>,
+    /// descriptor for the nexus
+    pub(super) nexus_descriptor: Descriptor,
     /// source URI of the healthy child to rebuild from
     pub(super) source: String,
     pub(super) source_hdl: BdevHandle,
@@ -119,8 +123,6 @@ pub struct RebuildJob {
     pub(super) states: RebuildStates,
     /// channel list which allows the await of the rebuild
     pub(super) complete_chan: Vec<oneshot::Sender<RebuildState>>,
-    /// I/O channel to the nexus
-    pub(super) nexus_channel: Arc<IoChannel>,
 }
 
 /// rebuild statistics

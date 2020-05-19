@@ -122,13 +122,15 @@ impl RebuildJob {
             nexus.to_string(),
         );
 
-        let nexus_desc =
+        let nexus_descriptor =
             Bdev::open_by_name(&nexus, true).context(BdevNotFound {
                 bdev: nexus.to_string(),
             })?;
 
         Ok(Self {
             nexus,
+            nexus_channel: Arc::new(nexus_descriptor.get_channel().unwrap()),
+            nexus_descriptor,
             source,
             source_hdl,
             destination,
@@ -143,7 +145,6 @@ impl RebuildJob {
             notify_chan: unbounded::<RebuildState>(),
             states: Default::default(),
             complete_chan: Vec::new(),
-            nexus_channel: Arc::new(nexus_desc.get_channel().unwrap()),
         })
     }
 
@@ -214,9 +215,8 @@ impl RebuildJob {
 
         let len = copy_buffer.len() as u64 / self.block_size;
         let mut ctx = RangeContext::new(blk, len, self.nexus_channel.clone());
-        let mut nexus_desc = Bdev::open_by_name(&self.nexus, true).unwrap();
 
-        nexus_desc
+        self.nexus_descriptor
             .lock_lba_range(&mut ctx)
             .await
             .context(RangeLockError {
@@ -238,12 +238,13 @@ impl RebuildJob {
                 bdev: &self.destination,
             })?;
 
-        nexus_desc.unlock_lba_range(&mut ctx).await.context(
-            RangeUnLockError {
+        self.nexus_descriptor
+            .unlock_lba_range(&mut ctx)
+            .await
+            .context(RangeUnLockError {
                 blk,
                 len,
-            },
-        )?;
+            })?;
 
         Ok(())
     }
