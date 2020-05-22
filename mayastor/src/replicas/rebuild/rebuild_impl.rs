@@ -13,7 +13,6 @@ use futures::{
 };
 
 use super::rebuild_api::*;
-use std::sync::Arc;
 
 /// Global list of rebuild jobs using a static OnceCell
 pub(super) struct RebuildInstances {
@@ -129,7 +128,6 @@ impl RebuildJob {
 
         Ok(Self {
             nexus,
-            nexus_channel: Arc::new(nexus_descriptor.get_channel().unwrap()),
             nexus_descriptor,
             source,
             source_hdl,
@@ -214,7 +212,7 @@ impl RebuildJob {
         };
 
         let len = copy_buffer.len() as u64 / self.block_size;
-        let mut ctx = RangeContext::new(blk, len, self.nexus_channel.clone());
+        let mut ctx = RangeContext::new(blk, len, &self.nexus_descriptor);
 
         self.nexus_descriptor
             .lock_lba_range(&mut ctx)

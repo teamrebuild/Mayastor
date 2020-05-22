@@ -5,7 +5,6 @@ use serde::export::{fmt::Error, Formatter};
 use spdk_sys::{
     bdev_lock_lba_range,
     bdev_unlock_lba_range,
-    lock_range_cb,
     spdk_bdev_close,
     spdk_bdev_desc,
     spdk_bdev_desc_get_bdev,
@@ -19,7 +18,6 @@ use crate::{
     core::{channel::IoChannel, Bdev, BdevHandle, CoreError},
 };
 use futures::{channel::mpsc, StreamExt};
-use std::sync::Arc;
 
 /// NewType around a descriptor, multiple descriptor to the same bdev is
 /// allowed. A bdev can me claimed for exclusive write access. Any existing
@@ -103,10 +101,13 @@ impl Descriptor {
         unsafe {
             let rc = bdev_lock_lba_range(
                 self.as_ptr(),
-                ctx.io_channel.as_ptr(),
+                ctx.io_channel
+                    .as_ref()
+                    .expect("No I/O channel found for lock LBA range")
+                    .as_ptr(),
                 ctx.offset,
                 ctx.len,
-                ctx.cb_fn,
+                Some(spdk_range_cb),
                 ctx.sender as *mut _,
             );
             if rc != 0 {
@@ -129,10 +130,13 @@ impl Descriptor {
         unsafe {
             let rc = bdev_unlock_lba_range(
                 self.as_ptr(),
-                ctx.io_channel.as_ptr(),
+                ctx.io_channel
+                    .as_ref()
+                    .expect("No I/O channel found for unlock LBA range")
+                    .as_ptr(),
                 ctx.offset,
                 ctx.len,
-                ctx.cb_fn,
+                Some(spdk_range_cb),
                 ctx.sender as *mut _,
             );
             if rc != 0 {
@@ -143,6 +147,7 @@ impl Descriptor {
         if rc != 0 {
             return Err(std::io::Error::from_raw_os_error(rc));
         }
+
         Ok(())
     }
 }
@@ -184,21 +189,19 @@ extern "C" fn spdk_range_cb(
 pub struct RangeContext {
     pub offset: u64,
     pub len: u64,
-    io_channel: Arc<IoChannel>,
-    cb_fn: lock_range_cb,
+    io_channel: Option<IoChannel>,
     sender: *mut mpsc::Sender<i32>,
     receiver: mpsc::Receiver<i32>,
 }
 
 impl RangeContext {
     /// Create a new RangeContext
-    pub fn new(offset: u64, len: u64, io_ch: Arc<IoChannel>) -> RangeContext {
+    pub fn new(offset: u64, len: u64, d: &Descriptor) -> RangeContext {
         let (s, r) = mpsc::channel::<i32>(0);
         RangeContext {
             offset,
             len,
-            io_channel: io_ch,
-            cb_fn: Some(spdk_range_cb),
+            io_channel: d.get_channel(),
             sender: Box::into_raw(Box::new(s)),
             receiver: r,
         }
