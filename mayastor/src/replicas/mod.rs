@@ -7,4 +7,5 @@ pub mod rebuild {
     pub mod rebuild_impl;
 
     pub use rebuild_api::*;
+    pub use rebuild_impl::SEGMENT_SIZE;
 }

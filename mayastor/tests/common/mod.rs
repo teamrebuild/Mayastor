@@ -315,16 +315,18 @@ pub fn compare_nexus_device(
 pub fn compare_devices(
     first_device: &str,
     second_device: &str,
+    size: u64,
     expected_pass: bool,
 ) -> String {
     let (exit, stdout, stderr) = run_script::run(
         r#"
-        cmp -b $1 $2 5M 5M
-        test $? -eq $3
+        cmp -b $1 $2 5M 5M -n $3
+        test $? -eq $4
     "#,
         &vec![
             first_device.into(),
             second_device.into(),
+            size.to_string(),
             (!expected_pass as i32).to_string(),
         ],
         &run_script::ScriptOptions::new(),
@@ -358,28 +360,39 @@ pub fn get_device_size(nexus_device: &str) -> u64 {
 }
 
 /// Waits for the rebuild to reach `state`, up to `timeout`
-pub fn wait_for_rebuild(name: String, state: RebuildState, timeout: Duration) {
+pub fn wait_for_rebuild(
+    name: String,
+    state: RebuildState,
+    timeout: Duration,
+) -> Result<(), ()> {
     let (s, r) = unbounded::<()>();
     let job = match RebuildJob::lookup(&name) {
         Ok(job) => job,
-        Err(_) => return,
+        Err(_) => return Ok(()),
     };
 
     let ch = job.notify_chan.1.clone();
-    std::thread::spawn(move || {
+    let t = std::thread::spawn(move || {
         let now = std::time::Instant::now();
+        let mut succeeded = Ok(());
         while {
             let current_state = select! {
                 recv(ch) -> state => {
                     info!("rebuild of child {} signalled with state {:?}", name, state);
                     state.unwrap()
                 },
-                recv(after(timeout - now.elapsed())) -> _ => panic!("timed out waiting for the rebuild to complete after {:?}", timeout),
+                recv(after(timeout - now.elapsed())) -> _ => {
+                    log::error!("timed out waiting for the rebuild to complete after {:?}", timeout);
+                    succeeded = Err(());
+                    state
+                }
             };
 
             current_state != state
         } {}
-        s.send(())
+        s.send(()).ok();
+        succeeded
     });
     reactor_poll!(r);
+    t.join().unwrap()
 }
