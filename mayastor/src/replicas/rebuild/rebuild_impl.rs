@@ -1,6 +1,13 @@
 #![warn(missing_docs)]
 
-use crate::core::{Bdev, BdevHandle, DmaBuf, RangeContext, Reactors};
+use crate::core::{
+    Bdev,
+    BdevHandle,
+    Descriptor,
+    DmaBuf,
+    RangeContext,
+    Reactors,
+};
 use crossbeam::channel::unbounded;
 use once_cell::sync::OnceCell;
 use snafu::ResultExt;
@@ -185,7 +192,19 @@ impl RebuildJob {
         self.reconcile();
     }
 
-    /// Copies one segment worth of data from source into destination
+    /// Copies one segment worth of data from source into destination. During
+    /// this time the LBA range being copied is locked so that there cannot be
+    /// front end I/O to the same LBA range.
+    ///
+    /// # Safety
+    ///
+    /// The lock and unlock functions internally reference the RangeContext as a
+    /// raw pointer, so rust cannot correctly manage its lifetime. The
+    /// RangeContext MUST NOT be dropped until after the unlock is complete.
+    ///
+    /// The use of RangeContext in this function is safe, as it is stored on the
+    /// stack for the duration of the function; during which time lock and
+    /// unlock are called.
     async fn copy_one(
         &mut self,
         id: u64,
@@ -212,38 +231,78 @@ impl RebuildJob {
         };
 
         let len = copy_buffer.len() as u64 / self.block_size;
+
+        // Create a context for use by the lock/unlock LBA range functions
         let mut ctx = RangeContext::new(blk, len, &self.nexus_descriptor);
 
-        self.nexus_descriptor
-            .lock_lba_range(&mut ctx)
-            .await
-            .context(RangeLockError {
-                blk,
-                len,
-            })?;
+        // Wait until the LBA range is locked
+        RebuildJob::lock_lba_range(&mut self.nexus_descriptor, &mut ctx)
+            .await?;
 
-        self.source_hdl
+        // Copy the data from source to destination
+
+        if let Err(e) = self
+            .source_hdl
             .read_at(blk * self.block_size, &mut copy_buffer)
             .await
             .context(IoError {
                 bdev: &self.source,
-            })?;
+            })
+        {
+            let _ = RebuildJob::unlock_lba_range(
+                &mut self.nexus_descriptor,
+                &mut ctx,
+            )
+            .await;
+            return Err(e);
+        }
 
-        self.destination_hdl
+        if let Err(e) = self
+            .destination_hdl
             .write_at(blk * self.block_size, &copy_buffer)
             .await
             .context(IoError {
                 bdev: &self.destination,
-            })?;
+            })
+        {
+            let _ = RebuildJob::unlock_lba_range(
+                &mut self.nexus_descriptor,
+                &mut ctx,
+            )
+            .await;
+            return Err(e);
+        }
 
-        self.nexus_descriptor
-            .unlock_lba_range(&mut ctx)
-            .await
-            .context(RangeUnLockError {
-                blk,
-                len,
-            })?;
+        // Wait until the LBA range is unlocked
+        RebuildJob::unlock_lba_range(&mut self.nexus_descriptor, &mut ctx)
+            .await?;
 
+        Ok(())
+    }
+
+    async fn lock_lba_range(
+        d: &mut Descriptor,
+        ctx: &mut RangeContext,
+    ) -> Result<(), RebuildError> {
+        let blk = ctx.offset;
+        let len = ctx.len;
+        d.lock_lba_range(ctx).await.context(RangeLockError {
+            blk,
+            len,
+        })?;
+        Ok(())
+    }
+
+    async fn unlock_lba_range(
+        d: &mut Descriptor,
+        ctx: &mut RangeContext,
+    ) -> Result<(), RebuildError> {
+        let blk = ctx.offset;
+        let len = ctx.len;
+        d.unlock_lba_range(ctx).await.context(RangeUnLockError {
+            blk,
+            len,
+        })?;
         Ok(())
     }
 

@@ -17,7 +17,8 @@ use crate::{
     bdev::nexus::nexus_module::NEXUS_MODULE,
     core::{channel::IoChannel, Bdev, BdevHandle, CoreError},
 };
-use futures::{channel::mpsc, StreamExt};
+use futures::channel::oneshot;
+use std::os::raw::c_void;
 
 /// NewType around a descriptor, multiple descriptor to the same bdev is
 /// allowed. A bdev can me claimed for exclusive write access. Any existing
@@ -98,6 +99,9 @@ impl Descriptor {
         &mut self,
         ctx: &mut RangeContext,
     ) -> Result<(), std::io::Error> {
+        let (s, r) = oneshot::channel::<i32>();
+        ctx.sender = Box::into_raw(Box::new(s));
+
         unsafe {
             let rc = bdev_lock_lba_range(
                 self.as_ptr(),
@@ -108,16 +112,18 @@ impl Descriptor {
                 ctx.offset,
                 ctx.len,
                 Some(spdk_range_cb),
-                ctx.sender as *mut _,
+                ctx as *const _ as *mut c_void,
             );
             if rc != 0 {
                 return Err(std::io::Error::from_raw_os_error(rc));
             }
         }
-        let rc = ctx.receiver.next().await.unwrap();
+
+        let rc = r.await.unwrap();
         if rc != 0 {
             return Err(std::io::Error::from_raw_os_error(rc));
         }
+
         Ok(())
     }
 
@@ -127,6 +133,9 @@ impl Descriptor {
         &mut self,
         ctx: &mut RangeContext,
     ) -> Result<(), std::io::Error> {
+        let (s, r) = oneshot::channel::<i32>();
+        ctx.sender = Box::into_raw(Box::new(s));
+
         unsafe {
             let rc = bdev_unlock_lba_range(
                 self.as_ptr(),
@@ -137,13 +146,14 @@ impl Descriptor {
                 ctx.offset,
                 ctx.len,
                 Some(spdk_range_cb),
-                ctx.sender as *mut _,
+                ctx as *const _ as *mut c_void,
             );
             if rc != 0 {
                 return Err(std::io::Error::from_raw_os_error(rc));
             }
         }
-        let rc = ctx.receiver.next().await.unwrap();
+
+        let rc = r.await.unwrap();
         if rc != 0 {
             return Err(std::io::Error::from_raw_os_error(rc));
         }
@@ -177,8 +187,9 @@ extern "C" fn spdk_range_cb(
     status: ::std::os::raw::c_int,
 ) {
     unsafe {
-        let s = ctx as *mut mpsc::Sender<i32>;
-        if let Err(e) = (*s).start_send(status) {
+        let ctx = ctx as *mut RangeContext;
+        let s = Box::from_raw((*ctx).sender as *mut oneshot::Sender<i32>);
+        if let Err(e) = s.send(status) {
             panic!("Failed to send SPDK completion with error {}.", e);
         }
     }
@@ -190,20 +201,17 @@ pub struct RangeContext {
     pub offset: u64,
     pub len: u64,
     io_channel: Option<IoChannel>,
-    sender: *mut mpsc::Sender<i32>,
-    receiver: mpsc::Receiver<i32>,
+    sender: *mut oneshot::Sender<i32>,
 }
 
 impl RangeContext {
     /// Create a new RangeContext
     pub fn new(offset: u64, len: u64, d: &Descriptor) -> RangeContext {
-        let (s, r) = mpsc::channel::<i32>(0);
         RangeContext {
             offset,
             len,
             io_channel: d.get_channel(),
-            sender: Box::into_raw(Box::new(s)),
-            receiver: r,
+            sender: std::ptr::null_mut(),
         }
     }
 }
