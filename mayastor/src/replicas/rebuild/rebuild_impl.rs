@@ -186,7 +186,9 @@ impl RebuildJob {
         self.reconcile();
     }
 
+    /// Return the size of the segment to be copied.
     fn get_segment_size_blks(&self, blk: u64) -> u64 {
+        // Adjust the segments size for the last segment
         if (blk + self.segment_size_blks) > self.end {
             return self.end - blk;
         }
@@ -201,11 +203,11 @@ impl RebuildJob {
     ///
     /// The lock and unlock functions internally reference the RangeContext as a
     /// raw pointer, so rust cannot correctly manage its lifetime. The
-    /// RangeContext MUST NOT be dropped until after the unlock is complete.
+    /// RangeContext MUST NOT be dropped until after the lock and unlock have
+    /// completed.
     ///
-    /// The use of RangeContext in this function is safe, as it is stored on the
-    /// stack for the duration of the function; during which time lock and
-    /// unlock are called.
+    /// The use of RangeContext here is safe because it is stored on the stack
+    /// for the duration of the calls to lock and unlock.
     async fn locked_copy_one(
         &mut self,
         id: u64,

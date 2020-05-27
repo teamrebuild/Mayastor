@@ -119,6 +119,7 @@ impl Descriptor {
             }
         }
 
+        // Wait for the lock to complete
         let rc = r.await.unwrap();
         if rc != 0 {
             return Err(std::io::Error::from_raw_os_error(rc));
@@ -153,6 +154,7 @@ impl Descriptor {
             }
         }
 
+        // Wait for the unlock to complete
         let rc = r.await.unwrap();
         if rc != 0 {
             return Err(std::io::Error::from_raw_os_error(rc));
@@ -189,6 +191,8 @@ extern "C" fn spdk_range_cb(
     unsafe {
         let ctx = ctx as *mut RangeContext;
         let s = Box::from_raw((*ctx).sender as *mut oneshot::Sender<i32>);
+
+        // Send a notification that the operation has completed
         if let Err(e) = s.send(status) {
             panic!("Failed to send SPDK completion with error {}.", e);
         }
