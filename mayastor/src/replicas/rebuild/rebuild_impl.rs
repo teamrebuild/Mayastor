@@ -1,6 +1,5 @@
 #![warn(missing_docs)]
 
-
 use crate::core::{Bdev, BdevHandle, DmaBuf, RangeContext, Reactors};
 
 use crossbeam::channel::unbounded;
@@ -186,7 +185,7 @@ impl RebuildJob {
         }
         self.reconcile();
     }
-  
+
     fn get_segment_size_blks(&self, blk: u64) -> u64 {
         if (blk + self.segment_size_blks) > self.end {
             return self.end - blk;
@@ -243,6 +242,13 @@ impl RebuildJob {
     }
 
     /// Copies one segment worth of data from source into destination.
+    async fn copy_one(
+        &mut self,
+        id: u64,
+        blk: u64,
+    ) -> Result<(), RebuildError> {
+        let mut copy_buffer: DmaBuf;
+
         let copy_buffer = if self.get_segment_size_blks(blk)
             == self.segment_size_blks
         {
