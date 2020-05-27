@@ -343,6 +343,20 @@ pub fn device_path_from_uri(device_uri: String) -> String {
     String::from(url.path())
 }
 
+pub fn get_device_size(nexus_device: &str) -> u64 {
+    let output = Command::new("blockdev")
+        .args(&["--getsize64", nexus_device])
+        .output()
+        .expect("failed to get block device size");
+
+    assert_eq!(output.status.success(), true);
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .trim_end()
+        .parse::<u64>()
+        .unwrap()
+}
+
 /// Waits for the rebuild to reach `state`, up to `timeout`
 pub fn wait_for_rebuild(name: String, state: RebuildState, timeout: Duration) {
     let (s, r) = unbounded::<()>();

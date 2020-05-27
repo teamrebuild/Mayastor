@@ -125,7 +125,7 @@ impl Nexus {
         let child_bdev = match Bdev::lookup_by_name(&name) {
             Some(child) => {
                 if child.block_len() != self.bdev.block_len()
-                    || self.min_num_blocks() < child.num_blocks()
+                    || self.min_num_blocks() > child.num_blocks()
                 {
                     if let Err(err) = bdev_destroy(uri).await {
                         error!(
@@ -134,7 +134,7 @@ impl Nexus {
                         );
                     }
                     return Err(Error::ChildGeometry {
-                        child: child.name(),
+                        child: name,
                         name: self.name.clone(),
                     });
                 } else {
