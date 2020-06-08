@@ -50,10 +50,6 @@ jobs:
     name: Run mocha tests
     runs-on: self-hosted
     steps:
-      - uses: actions/download-artifact@v2
-        with:
-          name: mayastor
-          path: ./target/debug
       - run: ( sudo modprobe nbd )
       - run: ( sudo modprobe xfs )
       # In line below change 2048 to 8192 if running on self-hosted instead of ubuntu-latest.
