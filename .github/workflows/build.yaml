@@ -40,7 +40,7 @@ jobs:
   Build_and_test_moac:
     name: Build and run moac tests
     needs: Build_and_run_cargo
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     container:
       image: docker.io/mayadata/ms-buildenv:latest
     steps:
@@ -51,7 +51,8 @@ jobs:
   Test_mayastor_with_mocha:
     needs: Build_and_run_cargo
     name: Run mocha tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    needs: Build_and_run_cargo
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
