@@ -50,7 +50,7 @@ jobs:
     name: Run mocha tests
     runs-on: self-hosted
     steps:
-      - run: chown -R $USER:$USER ./Mayastor
+      - run: chown -R $USER:$USER ./
       - uses: actions/checkout@v2
       # In line below change 2048 to 8192 if running on self-hosted instead of ubuntu-latest.
       - run: ( /usr/bin/docker create --name mochaTest --workdir /__w/Mayastor/Mayastor --network host --privileged -v /dev:/dev -v /:/host  --cpus 2 -v "/var/run/docker.sock":"/var/run/docker.sock" -v "/home/runner/work":"/__w" --entrypoint "tail" docker.io/mayadata/ms-buildenv:latest "-f" "/dev/null" )
