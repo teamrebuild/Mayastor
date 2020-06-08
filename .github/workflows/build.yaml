@@ -49,9 +49,6 @@ jobs:
     needs: Build_and_run_cargo
     name: Run mocha tests
     runs-on: self-hosted
-    container:
-      image: docker.io/mayadata/ms-buildenv:latest
-      options: --privileged -v /dev:/dev -v /bin:/host/bin -v /lib/modules:/lib/modules
     steps:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
