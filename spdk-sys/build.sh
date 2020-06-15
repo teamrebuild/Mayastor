@@ -7,7 +7,10 @@
 pushd spdk || { echo "Can not find spdk directory"; exit; }
 
 [ ! -d dpdk/.git ] || { echo "Submodules not checked out?"; exit; }
+
+
 ./configure --enable-debug \
+	--target-arch=nehalem \
 	--without-isal \
 	--with-iscsi-initiator \
 	--with-internal-vhost-lib \
@@ -15,7 +18,7 @@ pushd spdk || { echo "Can not find spdk directory"; exit; }
 	--enable-log-bt \
 	--with-uring
 
-make -j $(nproc)
+bear make -j $(nproc)
 
 # delete things we for sure do not want link
 find . -type f -name 'libspdk_ut_mock.a' -delete

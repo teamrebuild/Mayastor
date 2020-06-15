@@ -5,9 +5,9 @@ use uuid::Uuid;
 use mayastor::{
     bdev::{nexus_create, nexus_lookup, uring_util},
     core::{
+        mayastor_env_stop,
         Bdev,
         BdevHandle,
-        mayastor_env_stop,
         MayastorCliArgs,
         MayastorEnvironment,
         Mthread,

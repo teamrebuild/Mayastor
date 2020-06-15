@@ -1,9 +1,5 @@
 extern crate log;
 
-use std::time::Duration;
-
-use crossbeam::channel::unbounded;
-
 pub use common::error_bdev::{
     create_error_bdev,
     inject_error,
@@ -18,7 +14,6 @@ use mayastor::{
         Bdev,
         MayastorCliArgs,
         MayastorEnvironment,
-        Mthread,
         Reactor,
         Reactors,
     },

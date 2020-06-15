@@ -36,7 +36,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
-        args: ["-r", "/mayastor/mayastor.sock"]
+        command: ["/bin/tail"]
+        args: ["-f", "/dev/null"]
         securityContext:
           privileged: true
         volumeMounts:

@@ -40,7 +40,7 @@ use crate::{
             instances,
             nexus_channel::{DREvent, NexusChannel, NexusChannelInner},
             nexus_child::{ChildError, ChildState, ChildStatus, NexusChild},
-            nexus_io::{Bio, io_status},
+            nexus_io::{io_status, Bio},
             nexus_iscsi::{NexusIscsiError, NexusIscsiTarget},
             nexus_label::LabelError,
             nexus_nbd::{NbdDisk, NbdError},
@@ -50,10 +50,9 @@ use crate::{
     core::{Bdev, DmaError},
     ffihelper::errno_result_from_i32,
     jsonrpc::{Code, RpcErrorCode},
-    nexus_uri::BdevCreateDestroy,
+    nexus_uri::{bdev_destroy, BdevCreateDestroy},
     rebuild::RebuildError,
 };
-use crate::nexus_uri::bdev_destroy;
 
 /// Obtain the full error chain
 pub trait VerboseError {

@@ -1,5 +1,4 @@
-use std::{convert::TryFrom, fmt::Debug};
-use std::os::raw::c_void;
+use std::{convert::TryFrom, fmt::Debug, os::raw::c_void};
 
 use futures::channel::oneshot;
 use serde::export::{fmt::Error, Formatter};
@@ -17,7 +16,7 @@ use spdk_sys::{
 
 use crate::{
     bdev::nexus::nexus_module::NEXUS_MODULE,
-    core::{Bdev, BdevHandle, channel::IoChannel, CoreError},
+    core::{channel::IoChannel, Bdev, BdevHandle, CoreError},
 };
 
 /// NewType around a descriptor, multiple descriptor to the same bdev is

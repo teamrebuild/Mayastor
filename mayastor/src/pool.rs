@@ -21,7 +21,6 @@ use spdk_sys::{
     create_uring_bdev,
     delete_uring_bdev,
     lvol_store_bdev,
-    LVS_CLEAR_WITH_NONE,
     spdk_bs_free_cluster_count,
     spdk_bs_get_cluster_size,
     spdk_bs_total_data_cluster_count,
@@ -33,6 +32,7 @@ use spdk_sys::{
     vbdev_lvs_create,
     vbdev_lvs_destruct,
     vbdev_lvs_examine,
+    LVS_CLEAR_WITH_NONE,
 };
 
 use crate::{
