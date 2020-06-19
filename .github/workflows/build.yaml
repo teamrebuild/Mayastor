@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - develop
+      - local_spdk
 jobs:
   Build_and_run_cargo:
     name: Build and run cargo tests
@@ -13,7 +14,13 @@ jobs:
     container:
       image: docker.io/mayadata/ms-buildenv:gila
       options: --privileged -v /dev:/dev -v /bin:/host/bin -v /lib/modules:/lib/modules
-      - run: rustup default nightly
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          # this does not pin the compiler version
+          toolchain: nightly
+          #toolchain: stable
       - run: ln -s /host/bin/kmod /bin/modprobe
       - run: /bin/modprobe nbd
       - run: /bin/modprobe xfs
