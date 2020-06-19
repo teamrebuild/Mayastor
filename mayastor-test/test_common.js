@@ -142,6 +142,7 @@ function startProcess (command, args, env, closeCb, psName) {
   proc.output = [];
 
   proc.stdout.on('data', (data) => {
+      console.log(command + ":" +  data.toString());
     proc.output.push(data);
   });
   proc.stderr.on('data', (data) => {
@@ -256,6 +257,7 @@ function killSudoedProcess (name, pid, done) {
 
 // Kill all previously started processes.
 function stopAll (done) {
+    console.log("StopAll");
   // Unfortunately the order in which the procs are stopped matters (hence the
   // sort()). In nexus tests if spdk proc with connected nvmf target is stopped
   // before nvmf initiator in mayastor, it exits with segfault. That's also the

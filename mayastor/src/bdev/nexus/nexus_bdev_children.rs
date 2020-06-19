@@ -229,7 +229,7 @@ impl Nexus {
 
         let mut child = self.children.remove(idx);
         self.child_count -= 1;
-        self.reconfigure(DREvent::ChildRemove).await;
+        //self.reconfigure(DREvent::ChildRemove).await;
         child.destroy().await.context(DestroyChild {
             name: self.name.clone(),
             child: uri,
