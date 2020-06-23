@@ -201,6 +201,51 @@ class Watcher extends EventEmitter {
     }
   }
 
+  // Fetches the latest object(s) from k8s and updates the cache; then it
+  // returns the k8s object(s) from the cache or null if it does not exist.
+  async getRawBypass (name) {
+    try {
+      const getObj = await this.getEp(name).get();
+      if (getObj.statusCode === 200) {
+        const k8sObj = getObj.body;
+        const cachedObj = this.objects[name];
+
+        if (!cachedObj) {
+          // we still haven't processed the "ADDED" event so add it now
+          this._processEvent({
+            type: 'ADDED',
+            object: k8sObj
+          });
+        } else if (!k8sObj.metadata.generation || cachedObj.metadata.generation < k8sObj.metadata.generation) {
+          // the object already exists so modify it
+          this._processEvent({
+            type: 'MODIFIED',
+            object: k8sObj
+          });
+        }
+      } else {
+        const code = getObj.statusCode;
+        log.error(`Failed to fetch latest "${name}" from k8s, code: "${code}". Will only use the cached values instead.`);
+      }
+    } catch (err) {
+      // an exception is thrown if the resource does not exist
+      if (err.code === 404) {
+        const cachedObj = this.objects[name];
+        if (cachedObj) {
+          // the object does not exist so delete it
+          this._processEvent({
+            type: 'DELETED',
+            object: cachedObj
+          });
+        }
+      } else {
+        log.error(`Failed to fetch latest "${name}" from k8s, error: "${err}". Will only use the cached values instead.`);
+      }
+    }
+
+    return this.getRaw(name);
+  }
+
   // Return the collection of objects
   list () {
     return Object.values(this.objects).map((ent) => this.filterCb(ent));
