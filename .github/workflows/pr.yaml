@@ -8,8 +8,9 @@ jobs:
     container:
       image: docker.io/mayadata/ms-buildenv:latest
     steps:
-      - uses: actions/checkout@master
-      - uses: actions-rs/toolchain@master
+      - uses: actions/checkout@v2
+      - run: rustup self uninstall
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           components: clippy
@@ -23,6 +24,6 @@ jobs:
     container:
       image: docker.io/mayadata/ms-buildenv:latest
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v2
       - run: git ls-files | grep '\.js$' | xargs -r ./scripts/js-check.sh
         shell: bash
