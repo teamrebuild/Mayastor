@@ -1,20 +1,25 @@
 name: "Lint and style Checks"
 on:
   pull_request:
+  push:
+    branches:
+      - msn_updates
 jobs:
   Clippy:
     name: Clippy
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     container:
       image: docker.io/mayadata/ms-buildenv:latest
     steps:
-      - uses: actions/checkout@v2
-      - run: rustup self uninstall
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          components: clippy
-      - uses: actions-rs/clippy-check@v1.0.5
+      - run: ls -Rta /github/home/
+      - run: env
+      - run: rustup -v || true
+      - run: rustc || true
+      - run: cargo || true
+      - run: rustup toolchain install nightly-2020-06-10
+      - run: rustup default nightly-2020-06-10
+      - uses: actions/checkout@master
+      - uses: actions-rs/clippy-check@master
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all --all-targets -- -D warnings
@@ -24,6 +29,6 @@ jobs:
     container:
       image: docker.io/mayadata/ms-buildenv:latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@master
       - run: git ls-files | grep '\.js$' | xargs -r ./scripts/js-check.sh
         shell: bash
