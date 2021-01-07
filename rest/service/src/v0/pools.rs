@@ -22,20 +22,20 @@ async fn get_pools() -> impl Responder {
 }
 
 #[get("/v0/pools/{id}")]
-async fn get_pool(web::Path(pool_id): web::Path<String>) -> impl Responder {
+async fn get_pool(web::Path(pool_id): web::Path<PoolId>) -> impl Responder {
     RestRespond::result(MessageBus::get_pool(Filter::Pool(pool_id)).await)
 }
 
 #[get("/v0/nodes/{id}/pools")]
 async fn get_node_pools(
-    web::Path(node_id): web::Path<String>,
+    web::Path(node_id): web::Path<NodeId>,
 ) -> impl Responder {
     RestRespond::result(MessageBus::get_pools(Filter::Node(node_id)).await)
 }
 
 #[get("/v0/nodes/{node_id}/pools/{pool_id}")]
 async fn get_node_pool(
-    web::Path((node_id, pool_id)): web::Path<(String, String)>,
+    web::Path((node_id, pool_id)): web::Path<(NodeId, PoolId)>,
 ) -> impl Responder {
     RestRespond::result(
         MessageBus::get_pool(Filter::NodePool(node_id, pool_id)).await,
@@ -44,7 +44,7 @@ async fn get_node_pool(
 
 #[put("/v0/nodes/{node_id}/pools/{pool_id}")]
 async fn put_node_pool(
-    web::Path((node_id, pool_id)): web::Path<(String, String)>,
+    web::Path((node_id, pool_id)): web::Path<(NodeId, PoolId)>,
     create: web::Json<CreatePoolBody>,
 ) -> impl Responder {
     let create = create.into_inner().bus_request(node_id, pool_id);
@@ -53,12 +53,12 @@ async fn put_node_pool(
 
 #[delete("/v0/nodes/{node_id}/pools/{pool_id}")]
 async fn del_node_pool(
-    web::Path((node_id, pool_id)): web::Path<(String, String)>,
+    web::Path((node_id, pool_id)): web::Path<(NodeId, PoolId)>,
 ) -> impl Responder {
     destroy_pool(Filter::NodePool(node_id, pool_id)).await
 }
 #[delete("/v0/pools/{pool_id}")]
-async fn del_pool(web::Path(pool_id): web::Path<String>) -> impl Responder {
+async fn del_pool(web::Path(pool_id): web::Path<PoolId>) -> impl Responder {
     destroy_pool(Filter::Pool(pool_id)).await
 }
 

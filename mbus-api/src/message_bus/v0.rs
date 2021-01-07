@@ -90,6 +90,18 @@ pub type DestroyVolume = crate::v0::DestroyVolume;
 pub type AddVolumeNexus = crate::v0::AddVolumeNexus;
 /// Remove Volume Nexus
 pub type RemoveVolumeNexus = crate::v0::RemoveVolumeNexus;
+/// Id of a mayastor node
+pub type NodeId = crate::v0::NodeId;
+/// Id of a mayastor pool
+pub type PoolId = crate::v0::PoolId;
+/// UUId of a mayastor pool replica
+pub type ReplicaId = crate::v0::ReplicaId;
+/// UUId of a mayastor nexus
+pub type NexusId = crate::v0::NexusId;
+/// URI of a mayastor nexus child
+pub type ChildUri = crate::v0::ChildUri;
+/// UUId of a mayastor volume
+pub type VolumeId = crate::v0::VolumeId;
 
 macro_rules! only_one {
     ($list:ident) => {
@@ -117,10 +129,12 @@ pub trait MessageBusTrait: Sized {
 
     /// Get node with `id`
     #[tracing::instrument(level = "debug", err)]
-    async fn get_node(id: &str) -> BusResult<Node> {
+    async fn get_node(id: &NodeId) -> BusResult<Node> {
         let nodes = Self::get_nodes().await?;
-        let nodes =
-            nodes.into_iter().filter(|n| n.id == id).collect::<Vec<_>>();
+        let nodes = nodes
+            .into_iter()
+            .filter(|n| &n.id == id)
+            .collect::<Vec<_>>();
         only_one!(nodes)
     }
 
@@ -373,7 +387,7 @@ mod tests {
 
         orderly_start(&test).await?;
 
-        test_bus_backend(mayastor, &test).await?;
+        test_bus_backend(&NodeId::from(mayastor), &test).await?;
 
         // run with --nocapture to see all the logs
         test.logs_all().await?;
@@ -381,7 +395,7 @@ mod tests {
     }
 
     async fn test_bus_backend(
-        mayastor: &str,
+        mayastor: &NodeId,
         test: &ComposeTest,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let nodes = MessageBus::get_nodes().await?;
@@ -390,7 +404,7 @@ mod tests {
         assert_eq!(
             nodes.first().unwrap(),
             &Node {
-                id: mayastor.to_string(),
+                id: mayastor.clone(),
                 grpc_endpoint: "0.0.0.0:10124".to_string(),
                 state: NodeState::Online,
             }
@@ -399,7 +413,7 @@ mod tests {
         assert_eq!(
             node,
             Node {
-                id: mayastor.to_string(),
+                id: mayastor.clone(),
                 grpc_endpoint: "0.0.0.0:10124".to_string(),
                 state: NodeState::Online,
             }

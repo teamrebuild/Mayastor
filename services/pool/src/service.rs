@@ -27,7 +27,7 @@ impl PoolSvc {
     /// Get all pools from node or from all nodes
     async fn get_node_pools(
         &self,
-        node_id: Option<String>,
+        node_id: Option<NodeId>,
     ) -> Result<Vec<Pool>, SvcError> {
         Ok(match node_id {
             None => self.registry.list_pools().await,
@@ -38,7 +38,7 @@ impl PoolSvc {
     /// Get all replicas from node or from all nodes
     async fn get_node_replicas(
         &self,
-        node_id: Option<String>,
+        node_id: Option<NodeId>,
     ) -> Result<Vec<Replica>, SvcError> {
         Ok(match node_id {
             None => self.registry.list_replicas().await,

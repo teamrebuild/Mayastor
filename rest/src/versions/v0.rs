@@ -65,8 +65,8 @@ impl CreatePoolBody {
     /// convert into message bus type
     pub fn bus_request(
         &self,
-        node_id: String,
-        pool_id: String,
+        node_id: NodeId,
+        pool_id: PoolId,
     ) -> v0::CreatePool {
         v0::CreatePool {
             node: node_id,
@@ -88,9 +88,9 @@ impl CreateReplicaBody {
     /// convert into message bus type
     pub fn bus_request(
         &self,
-        node_id: String,
-        pool_id: String,
-        uuid: String,
+        node_id: NodeId,
+        pool_id: PoolId,
+        uuid: ReplicaId,
     ) -> v0::CreateReplica {
         v0::CreateReplica {
             node: node_id,
@@ -132,7 +132,7 @@ pub struct CreateNexusBody {
     /// (i.e. bdev:///name-of-the-bdev).
     ///
     /// uris to the targets we connect to
-    pub children: Vec<String>,
+    pub children: Vec<ChildUri>,
 }
 impl From<CreateNexus> for CreateNexusBody {
     fn from(create: CreateNexus) -> Self {
@@ -146,8 +146,8 @@ impl CreateNexusBody {
     /// convert into message bus type
     pub fn bus_request(
         &self,
-        node_id: String,
-        nexus_id: String,
+        node_id: NodeId,
+        nexus_id: NexusId,
     ) -> v0::CreateNexus {
         v0::CreateNexus {
             node: node_id,
@@ -169,6 +169,18 @@ pub type Volumes = v0::Volumes;
 pub type CreateVolume = v0::CreateVolume;
 /// Destroy Volume
 pub type DestroyVolume = v0::DestroyVolume;
+/// Id of a mayastor node
+pub type NodeId = v0::NodeId;
+/// Id of a mayastor pool
+pub type PoolId = v0::PoolId;
+/// UUId of a mayastor pool replica
+pub type ReplicaId = v0::ReplicaId;
+/// UUId of a mayastor nexus
+pub type NexusId = v0::NexusId;
+/// URI of a mayastor nexus child
+pub type ChildUri = v0::ChildUri;
+/// UUId of a mayastor volume
+pub type VolumeId = v0::VolumeId;
 
 /// Create Volume Body JSON
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -181,13 +193,13 @@ pub struct CreateVolumeBody {
     pub replicas: u64,
     /// only these nodes can be used for the replicas
     #[serde(default)]
-    pub allowed_nodes: Vec<String>,
+    pub allowed_nodes: Vec<NodeId>,
     /// preferred nodes for the replicas
     #[serde(default)]
-    pub preferred_nodes: Vec<String>,
+    pub preferred_nodes: Vec<NodeId>,
     /// preferred nodes for the nexuses
     #[serde(default)]
-    pub preferred_nexus_nodes: Vec<String>,
+    pub preferred_nexus_nodes: Vec<NodeId>,
 }
 impl From<CreateVolume> for CreateVolumeBody {
     fn from(create: CreateVolume) -> Self {
@@ -203,7 +215,7 @@ impl From<CreateVolume> for CreateVolumeBody {
 }
 impl CreateVolumeBody {
     /// convert into message bus type
-    pub fn bus_request(&self, volume_id: String) -> CreateVolume {
+    pub fn bus_request(&self, volume_id: VolumeId) -> CreateVolume {
         CreateVolume {
             uuid: volume_id,
             size: self.size,
@@ -504,12 +516,12 @@ impl RestClient for ActixRestClient {
         &self,
         args: RemoveNexusChild,
     ) -> anyhow::Result<()> {
-        let urn = match url::Url::parse(&args.uri) {
+        let urn = match url::Url::parse(args.uri.as_str()) {
             Ok(uri) => {
                 // remove initial '/'
                 uri.path()[1 ..].to_string()
             }
-            _ => args.uri.clone(),
+            _ => args.uri.to_string(),
         };
         self.del(urn).await?;
         Ok(())

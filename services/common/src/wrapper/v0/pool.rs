@@ -4,7 +4,7 @@ use super::{node_traits::*, *};
 #[derive(Debug, Default, Clone)]
 pub struct NodeWrapperPool {
     node: Node,
-    pools: HashMap<String, PoolWrapper>,
+    pools: HashMap<PoolId, PoolWrapper>,
 }
 
 #[async_trait]
@@ -60,7 +60,7 @@ impl NodePoolTrait for NodeWrapperPool {
             .insert(pool.name.clone(), PoolWrapper::new_from(&pool, replicas));
     }
 
-    fn on_destroy_pool(&mut self, pool: &str) {
+    fn on_destroy_pool(&mut self, pool: &PoolId) {
         self.pools.remove(pool);
     }
 }
@@ -149,7 +149,7 @@ impl NodeReplicaTrait for NodeWrapperPool {
         }
     }
 
-    fn on_destroy_replica(&mut self, pool: &str, replica: &str) {
+    fn on_destroy_replica(&mut self, pool: &PoolId, replica: &ReplicaId) {
         if let Some(pool) = self.pools.get_mut(pool) {
             pool.removed_replica(replica)
         }
@@ -157,8 +157,8 @@ impl NodeReplicaTrait for NodeWrapperPool {
 
     fn on_update_replica(
         &mut self,
-        pool: &str,
-        replica: &str,
+        pool: &PoolId,
+        replica: &ReplicaId,
         share: &Protocol,
         uri: &str,
     ) {
@@ -170,11 +170,11 @@ impl NodeReplicaTrait for NodeWrapperPool {
 
 #[async_trait]
 impl NodeWrapperTrait for NodeWrapperPool {
-    async fn new(node: &str) -> Result<NodeWrapper, SvcError> {
+    async fn new(node: &NodeId) -> Result<NodeWrapper, SvcError> {
         Ok(Box::new(Self::new_wrapper(node).await?))
     }
 
-    fn id(&self) -> String {
+    fn id(&self) -> NodeId {
         self.node.id.clone()
     }
     fn node(&self) -> Node {
@@ -238,7 +238,7 @@ impl NodeWrapperTrait for NodeWrapperPool {
 
 impl NodeWrapperPool {
     /// Fetch node via the message bus
-    async fn fetch_node(node: &str) -> Result<Node, SvcError> {
+    async fn fetch_node(node: &NodeId) -> Result<Node, SvcError> {
         MessageBus::get_node(node).await.context(BusGetNode {
             node,
         })
@@ -246,7 +246,7 @@ impl NodeWrapperPool {
 
     /// New node wrapper for the pool service containing
     /// a list of pools and replicas
-    async fn new_wrapper(node: &str) -> Result<NodeWrapperPool, SvcError> {
+    async fn new_wrapper(node: &NodeId) -> Result<NodeWrapperPool, SvcError> {
         let mut node = Self {
             // if we can't even fetch the node, then no point in proceeding
             node: NodeWrapperPool::fetch_node(node).await?,
@@ -280,10 +280,11 @@ impl_no_nexus!(NodeWrapperPool);
 /// mayastor gRPC types
 
 /// convert rpc pool to a message bus pool
-fn rpc_pool_to_bus(rpc_pool: &rpc::mayastor::Pool, id: String) -> Pool {
+fn rpc_pool_to_bus(rpc_pool: &rpc::mayastor::Pool, id: NodeId) -> Pool {
+    let rpc_pool = rpc_pool.clone();
     Pool {
         node: id,
-        name: rpc_pool.name.clone(),
+        name: rpc_pool.name.into(),
         disks: rpc_pool.disks.clone(),
         state: rpc_pool.state.into(),
         capacity: rpc_pool.capacity,
@@ -294,16 +295,17 @@ fn rpc_pool_to_bus(rpc_pool: &rpc::mayastor::Pool, id: String) -> Pool {
 /// convert rpc replica to a message bus replica
 fn rpc_replica_to_bus(
     rpc_replica: &rpc::mayastor::Replica,
-    id: String,
+    id: NodeId,
 ) -> Replica {
+    let rpc_replica = rpc_replica.clone();
     Replica {
         node: id,
-        uuid: rpc_replica.uuid.clone(),
-        pool: rpc_replica.pool.clone(),
+        uuid: rpc_replica.uuid.into(),
+        pool: rpc_replica.pool.into(),
         thin: rpc_replica.thin,
         size: rpc_replica.size,
         share: rpc_replica.share.into(),
-        uri: rpc_replica.uri.clone(),
+        uri: rpc_replica.uri,
     }
 }
 
@@ -311,12 +313,13 @@ fn rpc_replica_to_bus(
 fn bus_replica_to_rpc(
     request: &CreateReplica,
 ) -> rpc::mayastor::CreateReplicaRequest {
+    let request = request.clone();
     rpc::mayastor::CreateReplicaRequest {
-        uuid: request.uuid.clone(),
-        pool: request.pool.clone(),
+        uuid: request.uuid.into(),
+        pool: request.pool.into(),
         thin: request.thin,
         size: request.size,
-        share: request.share.clone() as i32,
+        share: request.share as i32,
     }
 }
 
@@ -324,9 +327,10 @@ fn bus_replica_to_rpc(
 fn bus_replica_share_to_rpc(
     request: &ShareReplica,
 ) -> rpc::mayastor::ShareReplicaRequest {
+    let request = request.clone();
     rpc::mayastor::ShareReplicaRequest {
-        uuid: request.uuid.clone(),
-        share: request.protocol.clone() as i32,
+        uuid: request.uuid.into(),
+        share: request.protocol as i32,
     }
 }
 
@@ -334,17 +338,19 @@ fn bus_replica_share_to_rpc(
 fn bus_replica_unshare_to_rpc(
     request: &UnshareReplica,
 ) -> rpc::mayastor::ShareReplicaRequest {
+    let request = request.clone();
     rpc::mayastor::ShareReplicaRequest {
-        uuid: request.uuid.clone(),
+        uuid: request.uuid.into(),
         share: Protocol::Off as i32,
     }
 }
 
 /// convert a message bus replica share to an rpc replica share
 fn bus_pool_to_rpc(request: &CreatePool) -> rpc::mayastor::CreatePoolRequest {
+    let request = request.clone();
     rpc::mayastor::CreatePoolRequest {
-        name: request.name.clone(),
-        disks: request.disks.clone(),
+        name: request.name.into(),
+        disks: request.disks,
     }
 }
 
@@ -353,7 +359,7 @@ fn bus_replica_destroy_to_rpc(
     request: &DestroyReplica,
 ) -> rpc::mayastor::DestroyReplicaRequest {
     rpc::mayastor::DestroyReplicaRequest {
-        uuid: request.uuid.clone(),
+        uuid: request.uuid.clone().into(),
     }
 }
 
@@ -362,6 +368,6 @@ fn bus_pool_destroy_to_rpc(
     request: &DestroyPool,
 ) -> rpc::mayastor::DestroyPoolRequest {
     rpc::mayastor::DestroyPoolRequest {
-        name: request.name.clone(),
+        name: request.name.clone().into(),
     }
 }

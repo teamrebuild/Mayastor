@@ -30,7 +30,7 @@ impl Default for NotFoundPolicy {
 /// mayastor nodes/other services.
 #[derive(Clone, Default, Debug)]
 pub struct Registry<T> {
-    nodes: Arc<Mutex<HashMap<String, NodeWrapper>>>,
+    nodes: Arc<Mutex<HashMap<NodeId, NodeWrapper>>>,
     update_period: std::time::Duration,
     not_found: NotFoundPolicy,
     _t: PhantomData<T>,
@@ -100,9 +100,9 @@ impl<T: NodeWrapperTrait + Default + 'static + Clone> Registry<T> {
     }
 
     /// List all cached pools from node
-    pub async fn list_node_pools(&self, node: &str) -> Vec<Pool> {
+    pub async fn list_node_pools(&self, node: &NodeId) -> Vec<Pool> {
         let nodes = self.list_nodes_wrapper().await;
-        if let Some(node) = nodes.iter().find(|&n| n.id() == node) {
+        if let Some(node) = nodes.iter().find(|&n| &n.id() == node) {
             node.pools()
         } else {
             // or return error, node not found?
@@ -121,9 +121,9 @@ impl<T: NodeWrapperTrait + Default + 'static + Clone> Registry<T> {
     }
 
     /// List all cached replicas from node
-    pub async fn list_node_replicas(&self, node: &str) -> Vec<Replica> {
+    pub async fn list_node_replicas(&self, node: &NodeId) -> Vec<Replica> {
         let nodes = self.list_nodes_wrapper().await;
-        if let Some(node) = nodes.iter().find(|&n| n.id() == node) {
+        if let Some(node) = nodes.iter().find(|&n| &n.id() == node) {
             node.replicas()
         } else {
             // or return error, node not found?
@@ -146,12 +146,15 @@ impl<T: NodeWrapperTrait + Default + 'static + Clone> Registry<T> {
     }
 
     /// Get current list of known nodes
-    async fn get_known_nodes(&self, node_id: &str) -> Option<NodeWrapper> {
+    async fn get_known_nodes(&self, node_id: &NodeId) -> Option<NodeWrapper> {
         let nodes = self.nodes.lock().await;
         nodes.get(node_id).cloned()
     }
     /// Get node `node_id`
-    async fn get_node(&self, node_id: &str) -> Result<NodeWrapper, SvcError> {
+    async fn get_node(
+        &self,
+        node_id: &NodeId,
+    ) -> Result<NodeWrapper, SvcError> {
         let mut nodes = self.nodes.lock().await;
         let node = match nodes.get(node_id) {
             Some(node) => node.clone(),
@@ -163,12 +166,12 @@ impl<T: NodeWrapperTrait + Default + 'static + Clone> Registry<T> {
                         node
                     } else {
                         return Err(SvcError::BusNodeNotFound {
-                            node_id: node_id.to_string(),
+                            node_id: node_id.into(),
                         });
                     }
                 } else {
                     return Err(SvcError::BusNodeNotFound {
-                        node_id: node_id.to_string(),
+                        node_id: node_id.into(),
                     });
                 }
             }
@@ -213,9 +216,9 @@ impl<T: NodeWrapperTrait + Default + 'static + Clone> Registry<T> {
     }
     async fn reg_update_replica(
         &self,
-        node: &str,
-        pool: &str,
-        id: &str,
+        node: &NodeId,
+        pool: &PoolId,
+        id: &ReplicaId,
         share: &Protocol,
         uri: &str,
     ) {
@@ -309,7 +312,12 @@ impl<T: NodeWrapperTrait + Default + 'static + Clone> Registry<T> {
             node.on_destroy_nexus(&request.uuid);
         }
     }
-    async fn on_add_nexus_child(&self, node: &str, nexus: &str, child: &Child) {
+    async fn on_add_nexus_child(
+        &self,
+        node: &NodeId,
+        nexus: &NexusId,
+        child: &Child,
+    ) {
         let mut nodes = self.nodes.lock().await;
         let node = nodes.get_mut(node);
         if let Some(node) = node {
@@ -323,7 +331,7 @@ impl<T: NodeWrapperTrait + Default + 'static + Clone> Registry<T> {
             node.on_remove_child(request);
         }
     }
-    async fn on_update_nexus(&self, node: &str, nexus: &str, uri: &str) {
+    async fn on_update_nexus(&self, node: &NodeId, nexus: &NexusId, uri: &str) {
         let mut nodes = self.nodes.lock().await;
         let node = nodes.get_mut(node);
         if let Some(node) = node {
@@ -342,9 +350,9 @@ impl<T: NodeWrapperTrait + Default + 'static + Clone> Registry<T> {
     }
 
     /// List all cached nexuses from node
-    pub async fn list_node_nexuses(&self, node: &str) -> Vec<Nexus> {
+    pub async fn list_node_nexuses(&self, node: &NodeId) -> Vec<Nexus> {
         let nodes = self.list_nodes_wrapper().await;
-        if let Some(node) = nodes.iter().find(|&n| n.id() == node) {
+        if let Some(node) = nodes.iter().find(|&n| &n.id() == node) {
             node.nexuses()
         } else {
             // hmm, or return error, node not found?

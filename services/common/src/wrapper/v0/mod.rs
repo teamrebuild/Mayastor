@@ -42,9 +42,9 @@ pub enum SvcError {
     #[snafu(display("Failed to destroy pool from the pool service"))]
     BusGetReplicas { source: mbus_api::Error },
     #[snafu(display("Failed to get node '{}' from the node service", node))]
-    BusGetNode { source: BusError, node: String },
+    BusGetNode { source: BusError, node: NodeId },
     #[snafu(display("Node '{}' is not online", node))]
-    NodeNotOnline { node: String },
+    NodeNotOnline { node: NodeId },
     #[snafu(display("Failed to connect to node via gRPC"))]
     GrpcConnect { source: tonic::transport::Error },
     #[snafu(display("Failed to list pools via gRPC"))]
@@ -64,7 +64,7 @@ pub enum SvcError {
     #[snafu(display("Failed to unshare replica via gRPC"))]
     GrpcUnshareReplica { source: tonic::Status },
     #[snafu(display("Node not found"))]
-    BusNodeNotFound { node_id: String },
+    BusNodeNotFound { node_id: NodeId },
     #[snafu(display("Pool not found"))]
     BusPoolNotFound { pool_id: String },
     #[snafu(display("Invalid filter for pools"))]
