@@ -18,12 +18,9 @@ jobs:
         env:
           GITHUB_CONTEXT: ${{ toJson(github) }}
         run: echo "$GITHUB_CONTEXT"
-
       - name: get commit message
         run: |
-           echo ::set-env name=commitmsg::$(git log --format=%B -n 1 ${{ github.event.after }})
-      - name: show commit message
-        run : echo $commitmsg
+           echo $(git log --format=%B ${{ github.event.after }}..HEAD)
       - run: npx commitlint
       - uses: JulienKode/pull-request-name-linter-action@v0.2.0
         
