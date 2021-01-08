@@ -18,5 +18,5 @@ jobs:
           first_commit=$(curl ${{ github.event.pull_request.commits_url }} | jq '.[0].sha' | sed 's/"//g')
           npx commitlint --from $first_commit -V || true
       - name: lint pr
-        run: echo $"${{ github.event.pull_request.title }}\n${{ github.event.pull_request.body }}" | npx commitlint -V
+        run: echo $'${{ github.event.pull_request.title }}\n${{ github.event.pull_request.body }}' | npx commitlint -V
       #- uses: JulienKode/pull-request-name-linter-action@v0.2.0
