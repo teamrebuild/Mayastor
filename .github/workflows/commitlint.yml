@@ -12,18 +12,13 @@ jobs:
           fetch-depth: 0
       - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
       - name: Install Dependencies
-        run: npm install @commitlint/config-conventional && npm install @commitlint/cli
-      #- name : GITHUB CONTEXT
-      #  env:
-      #    GITHUB_CONTEXT: ${{ toJson(github) }}
-      #  run: echo "$GITHUB_CONTEXT"
-      - name: get commit message
+        run: npm install @commitlint/config-conventional @commitlint/cli
+      - name: lint commit messages
         run: |
            for sha in $(curl ${{ github.event.pull_request.commits_url }} | jq '.[].sha' | sed 's/"//g')
            do
-            echo "Sha: $sha"
+            git --no-pager log --format=%B -n 1 $sha | npx commitlint -V
            done
-      - run: npx commitlint
       - uses: wagoid/commitlint-github-action@v2
       - uses: JulienKode/pull-request-name-linter-action@v0.2.0
         
