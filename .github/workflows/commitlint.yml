@@ -19,7 +19,7 @@ jobs:
         run: echo "$GITHUB_CONTEXT"
       - name: get commit message
         run: |
-           git log --format=%B ${{ github.event.after }}..HEAD
+           git log --format=%B ${{ github.event.before }}..HEAD
       - uses: wagoid/commitlint-github-action@v2
       - run: npx commitlint
       - uses: JulienKode/pull-request-name-linter-action@v0.2.0
