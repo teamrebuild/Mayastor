@@ -5,12 +5,11 @@ jobs:
   commitlint:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "lalala"
-      - run: echo "module.exports = {extends:\ ['@commitlint/config-conventional']}" > ./commitlint.config.js
+      - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
       - run: cat ./commitlint.config.js
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - uses: wagoid/commitlint-github-action@v2
       - uses: JulienKode/pull-request-name-linter-action@v0.2.0
+      - uses: wagoid/commitlint-github-action@v2
         
