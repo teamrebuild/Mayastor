@@ -6,6 +6,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
+      - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./Mayastor/commitlint.config.js
+      - run: pwd
       - run: cat ./commitlint.config.js
       - uses: actions/checkout@v2
         with:
