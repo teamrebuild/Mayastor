@@ -10,20 +10,4 @@ jobs:
       - name: Dump GitHub context
         env:
           GITHUB_CONTEXT: ${{ toJson(github) }}
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
-      - run: echo "$GITHUB_CONTEXT"
-      - name: Install Dependencies
-        run: npm install @commitlint/config-conventional @commitlint/cli
-      - name: lint commit messages
-        run: |
-           for sha in $(curl ${{ github.event.pull_request.commits_url }} | jq '.[].sha' | sed 's/"//g')
-           do
-            git --no-pager log --format=%B -n 1 $sha | npx commitlint -V || true
-           done
-      - name: lint pr
-        run: echo $"${{ github.event.pull_request.title }}\n${{ github.event.pull_request.body }}" | npx commitlint -V
-      #- uses: JulienKode/pull-request-name-linter-action@v0.2.0
-        
+        run: echo "$GITHUB_CONTEXT"        
