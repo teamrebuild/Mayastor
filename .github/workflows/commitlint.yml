@@ -11,7 +11,6 @@ jobs:
         with:
           fetch-depth: 0
       - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
-      #- uses: wagoid/commitlint-github-action@v2
       - name: Install Dependencies
         run: npm install @commitlint/config-conventional && npm install @commitlint/cli
       - name : GITHUB CONTEXT
@@ -20,7 +19,8 @@ jobs:
         run: echo "$GITHUB_CONTEXT"
       - name: get commit message
         run: |
-           echo $(git log --format=%B ${{ github.event.after }}..HEAD)
+           git log --format=%B ${{ github.event.after }}..HEAD
+      - uses: wagoid/commitlint-github-action@v2
       - run: npx commitlint
       - uses: JulienKode/pull-request-name-linter-action@v0.2.0
         
