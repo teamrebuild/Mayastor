@@ -11,7 +11,7 @@ jobs:
         with:
           fetch-depth: 0
       #- run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
-      - uses: wagoid/commitlint-github-action@v2
+      #- uses: wagoid/commitlint-github-action@v2
       - name: Install Dependencies
         run: npm install @commitlint/config-conventional @commitlint/cli
       - name: lint commit messages
