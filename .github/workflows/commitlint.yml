@@ -11,8 +11,10 @@ jobs:
         with:
           fetch-depth: 0
       - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
-      - uses: wagoid/commitlint-github-action@v2
+      #- uses: wagoid/commitlint-github-action@v2
       - name: Install Dependencies
-        run: npm install @commitlint/config-conventional
+        run: npm install @commitlint/{config-conventional, cli}
+      - run: ls
+      - run: npx commitlint
       - uses: JulienKode/pull-request-name-linter-action@v0.2.0
         
