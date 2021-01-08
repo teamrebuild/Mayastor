@@ -9,6 +9,6 @@ jobs:
       - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
       - run: pwd
       - run: cat ./commitlint.config.js
-      - uses: JulienKode/pull-request-name-linter-action@v0.2.0
       - uses: wagoid/commitlint-github-action@v2
+      - uses: JulienKode/pull-request-name-linter-action@v0.2.0
         
