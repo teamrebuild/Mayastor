@@ -19,7 +19,7 @@ jobs:
       #  run: echo "$GITHUB_CONTEXT"
       - name: get commit message
         run: |
-           for sha in $(curl $GITHUB_CONTEXT | jq '.[].sha' | sed 's/"//g')
+           for sha in $(curl ${{ github.event.pull_request.commits_url }} | jq '.[].sha' | sed 's/"//g')
            do
             echo "Sha: $sha"
            done
