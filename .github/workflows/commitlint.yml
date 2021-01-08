@@ -10,13 +10,13 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - run: echo "module.exports = {extends:['@commitlint/config-conventional'],defaultIgnores:false}" > ./commitlint.config.js
-      - name: Install Dependencies
+      - name: Setup CommitLint Configuration
+        run: echo "module.exports = {extends:['@commitlint/config-conventional'],defaultIgnores:false}" > ./commitlint.config.js
+      - name: Install CommitLint and Dependencies
         run: npm install @commitlint/config-conventional @commitlint/cli
-      - name: lint commit messages
+      - name: Lint Commits
         run: |
           first_commit=$(curl ${{ github.event.pull_request.commits_url }} | jq '.[0].sha' | sed 's/"//g')
-          npx commitlint --from $first_commit -V || true
-      - name: lint pr
+          npx commitlint --from $first_commit -V
+      - name: Lint Pull Request
         run: echo $'${{ github.event.pull_request.title }}\n\n${{ github.event.pull_request.body }}' | npx commitlint -V
-      #- uses: JulienKode/pull-request-name-linter-action@v0.2.0
