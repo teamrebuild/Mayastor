@@ -16,6 +16,7 @@ jobs:
         run: npm install @commitlint/config-conventional @commitlint/cli
       - name: lint commit messages
         run: |
+           echo ${{ github.event.pull_request.title }}
            for sha in $(curl ${{ github.event.pull_request.commits_url }} | jq '.[].sha' | sed 's/"//g')
            do
             git --no-pager log --format=%B -n 1 $sha | npx commitlint -V || true
