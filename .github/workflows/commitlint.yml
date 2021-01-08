@@ -11,7 +11,10 @@ jobs:
         with:
           fetch-depth: 0
       - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
-      - run: echo $(${{ github.event.pull_request }})
+      - name: Dump GitHub context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+      - run: echo "$GITHUB_CONTEXT"
       #- uses: wagoid/commitlint-github-action@v2
       - name: Install Dependencies
         run: npm install @commitlint/config-conventional @commitlint/cli
@@ -22,6 +25,6 @@ jobs:
             git --no-pager log --format=%B -n 1 $sha | npx commitlint -V || true
            done
       - name: lint pr
-        run: echo "${{ github.event.pull_request.title }}" | npx commitlint -V
+        run: echo $"${{ github.event.pull_request.title }}\n${{ github.event.pull_request.body }}" | npx commitlint -V
       #- uses: JulienKode/pull-request-name-linter-action@v0.2.0
         
