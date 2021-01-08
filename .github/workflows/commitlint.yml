@@ -13,13 +13,13 @@ jobs:
       - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
       - name: Install Dependencies
         run: npm install @commitlint/config-conventional && npm install @commitlint/cli
-      - name : GITHUB CONTEXT
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: echo "$GITHUB_CONTEXT"
+      #- name : GITHUB CONTEXT
+      #  env:
+      #    GITHUB_CONTEXT: ${{ toJson(github) }}
+      #  run: echo "$GITHUB_CONTEXT"
       - name: get commit message
         run: |
-           for sha in $(echo $GITHUB_CONTEXT | jq '.[].sha' | sed 's/"//g')
+           for sha in $(curl $GITHUB_CONTEXT | jq '.[].sha' | sed 's/"//g')
            do
             echo "Sha: $sha"
            done
