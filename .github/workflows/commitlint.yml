@@ -10,7 +10,8 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
+      #- run: echo "module.exports = {extends:['@commitlint/config-conventional']}" > ./commitlint.config.js
+      - uses: wagoid/commitlint-github-action@v2
       - name: Install Dependencies
         run: npm install @commitlint/config-conventional @commitlint/cli
       - name: lint commit messages
@@ -19,6 +20,5 @@ jobs:
            do
             git --no-pager log --format=%B -n 1 $sha | npx commitlint -V || true
            done
-      - uses: wagoid/commitlint-github-action@v2
       - uses: JulienKode/pull-request-name-linter-action@v0.2.0
         
