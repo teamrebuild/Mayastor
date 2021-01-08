@@ -7,7 +7,13 @@ jobs:
   commitlint:
     runs-on: ubuntu-latest
     steps:
-      - name: Dump GitHub context
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: echo "$GITHUB_CONTEXT"        
+      - run: echo "module.exports = {extends:['@commitlint/config-conventional'],defaultIgnores:false}" > ./commitlint.config.js
+      - name: Install Dependencies
+        run: npm install @commitlint/config-conventional @commitlint/cli
+      - name: lint commit messages
+        run: |
+          first_commit=$(curl ${{ github.event.pull_request.commits_url }} | jq '.[0].sha' | sed 's/"//g')
+          npx commitlint --from $first_commit -V
+      - name: lint pr
+        run: echo $"${{ github.event.pull_request.title }}\n${{ github.event.pull_request.body }}" | npx commitlint -V
+      #- uses: JulienKode/pull-request-name-linter-action@v0.2.0
