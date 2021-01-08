@@ -7,6 +7,9 @@ jobs:
   commitlint:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - run: echo "module.exports = {extends:['@commitlint/config-conventional'],defaultIgnores:false}" > ./commitlint.config.js
       - name: Install Dependencies
         run: npm install @commitlint/config-conventional @commitlint/cli
