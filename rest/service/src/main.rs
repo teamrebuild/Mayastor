@@ -93,6 +93,7 @@ async fn main() -> std::io::Result<()> {
             .configure(v0::volumes::configure)
             .with_json_spec_at(SPEC_URI)
             .build()
+            .configure(v0::swagger_ui::configure)
     })
     .bind_rustls(CliArgs::from_args().https, config)?
     .bind(CliArgs::from_args().http)?
