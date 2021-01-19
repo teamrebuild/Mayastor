@@ -1,6 +1,7 @@
 mod v0;
 
 use actix_web::{middleware, App, HttpServer};
+use paperclip::actix::OpenApiExt;
 use rustls::{
     internal::pemfile::{certs, rsa_private_keys},
     NoClientAuth,
@@ -9,12 +10,19 @@ use rustls::{
 use std::io::BufReader;
 use structopt::StructOpt;
 
+/// uri where the openapi spec is exposed
+pub(crate) const SPEC_URI: &str = "/v0/api/spec";
+
 #[derive(Debug, StructOpt)]
-struct CliArgs {
-    /// The Rest Server address to bind to
+pub(crate) struct CliArgs {
+    /// The Rest https Server address to bind to
     /// Default: 0.0.0.0:8080
-    #[structopt(long, short, default_value = "0.0.0.0:8080")]
-    rest: String,
+    #[structopt(long, long, default_value = "0.0.0.0:8080")]
+    https: String,
+    /// The Rest http Server address to bind to
+    /// Default: 0.0.0.0:8081
+    #[structopt(long, long, default_value = "0.0.0.0:8081")]
+    http: String,
     /// The Nats Server URL or address to connect to
     /// Default: nats://0.0.0.0:4222
     #[structopt(long, short, default_value = "nats://0.0.0.0:4222")]
@@ -76,14 +84,18 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(RequestTracing::new())
             .wrap(middleware::Logger::default())
-            .service(v0::nodes::factory())
-            .service(v0::pools::factory())
-            .service(v0::replicas::factory())
-            .service(v0::nexuses::factory())
-            .service(v0::children::factory())
-            .service(v0::volumes::factory())
+            .wrap_api()
+            .configure(v0::nodes::configure)
+            .configure(v0::pools::configure)
+            .configure(v0::replicas::configure)
+            .configure(v0::nexuses::configure)
+            .configure(v0::children::configure)
+            .configure(v0::volumes::configure)
+            .with_json_spec_at(SPEC_URI)
+            .build()
     })
-    .bind_rustls(CliArgs::from_args().rest, config)?
+    .bind_rustls(CliArgs::from_args().https, config)?
+    .bind(CliArgs::from_args().http)?
     .run()
     .await
 }
