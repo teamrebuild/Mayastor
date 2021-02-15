@@ -1,0 +1,5 @@
+name: "Mayastor RESTful API"
+tasks:
+  start:
+    command: cargo run --bin rest -- -d
+    inboundUrl: https://localhost:8081/v0/api/spec
